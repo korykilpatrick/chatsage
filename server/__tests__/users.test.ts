@@ -5,6 +5,7 @@ import { createMockDb } from './setup';
 import { db } from '@db';
 import { eq } from 'drizzle-orm';
 import { users } from '@db/schema';
+import usersRouter from '../routes/users';
 
 describe('Users API', () => {
   let app: express.Express;
@@ -12,16 +13,18 @@ describe('Users API', () => {
 
   beforeEach(async () => {
     app = express();
+    // Important: Add json middleware before mounting routes
     app.use(express.json());
+    app.use('/api/users', usersRouter);
     mockDb.clear();
 
-    // Clean up test data
-    await db.delete(users).where(eq(users.username, 'testuser'));
+    // Clean up test data before each test
+    await db.delete(users);
   });
 
   afterAll(async () => {
     // Final cleanup
-    await db.delete(users).where(eq(users.username, 'testuser'));
+    await db.delete(users);
   });
 
   describe('GET /api/users', () => {
@@ -36,7 +39,7 @@ describe('Users API', () => {
     });
 
     it('should return list of users when users exist', async () => {
-      // Create test user in database
+      // Create test user
       await db.insert(users).values({
         username: 'testuser',
         email: 'test@example.com',
@@ -65,14 +68,14 @@ describe('Users API', () => {
       await db.insert(users).values([
         {
           username: 'active',
-          email: 'active@example.com',
+          email: 'active1@example.com',
           password: 'hashedpassword',
           displayName: 'Active User',
           deactivated: false
         },
         {
           username: 'inactive',
-          email: 'inactive@example.com',
+          email: 'inactive1@example.com',
           password: 'hashedpassword',
           displayName: 'Inactive User',
           deactivated: true
