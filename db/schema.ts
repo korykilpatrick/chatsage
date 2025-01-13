@@ -1,6 +1,6 @@
 import { pgTable, serial, text, boolean, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
-import { relations } from "drizzle-orm";
+import { relations, type InferModel } from "drizzle-orm";
 
 // Enums
 export const presenceEnum = pgEnum('user_presence_enum', ['ONLINE', 'AWAY', 'DND', 'OFFLINE']);
@@ -44,12 +44,14 @@ export const channels = pgTable("channels", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export type Message = InferModel<typeof messages>;
+
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id),
   channelId: integer("channel_id").references(() => channels.id),
   workspaceId: integer("workspace_id").references(() => workspaces.id),
-  parentMessageId: integer("parent_message_id").references(() => messages.id),
+  parentMessageId: integer("parent_message_id").references((): any => messages.id),
   content: text("content").notNull(),
   deleted: boolean("deleted").default(false),
   postedAt: timestamp("posted_at").defaultNow(),
@@ -189,7 +191,6 @@ export type InsertWorkspace = typeof workspaces.$inferInsert;
 export type Channel = typeof channels.$inferSelect;
 export type InsertChannel = typeof channels.$inferInsert;
 
-export type Message = typeof messages.$inferSelect;
 export type InsertMessage = typeof messages.$inferInsert;
 
 export type File = typeof files.$inferSelect;
