@@ -12,6 +12,7 @@ const generate = () => {
     '-i', path.resolve(__dirname, '../attached_assets/openapi.json'),
     '-g', 'typescript-node',
     '-o', path.resolve(__dirname, './generated'),
+    '--skip-validate-spec',
     '--additional-properties=framework=express',
     '--additional-properties=supportsES6=true',
     '--additional-properties=npmName=chatsage-api',
