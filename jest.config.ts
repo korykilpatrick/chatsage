@@ -15,6 +15,7 @@ const config: Config.InitialOptions = {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: './tsconfig.json',
       useESM: true,
+      isolatedModules: true,
       diagnostics: {
         warnOnly: true // This will prevent TypeScript errors from failing tests
       }
@@ -24,7 +25,12 @@ const config: Config.InitialOptions = {
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   testMatch: ['**/__tests__/**/*.test.ts'],
   modulePathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/dist/'],
-  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/dist/']
+  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/dist/'],
+  globals: {
+    'ts-jest': {
+      useESM: true,
+    },
+  }
 };
 
 export default config;

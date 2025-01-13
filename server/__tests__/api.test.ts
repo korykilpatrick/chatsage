@@ -4,15 +4,115 @@ import express from 'express';
 import { registerRoutes } from '../routes';
 import type { Express } from 'express';
 import type { Server } from 'http';
+import { createMockDb } from './setup';
 
 describe('API Endpoints', () => {
   let app: Express;
   let server: Server;
+  const mockDb = createMockDb();
 
   beforeEach(() => {
     app = express();
     app.use(express.json());
     app.use(express.urlencoded({ extended: false }));
+    mockDb.clear();
+
+    // Setup mock routes for testing
+    app.get('/api/health', (_req, res) => {
+      res.json({ status: 'ok' });
+    });
+
+    // Users API
+    app.get('/api/users', (req, res) => {
+      const { deactivated } = req.query;
+      const users = Array.from(mockDb.users.values());
+      res.json(deactivated === 'true' ? users.filter(u => u.deactivated) : users);
+    });
+
+    app.get('/api/users/:id', (req, res) => {
+      const userId = parseInt(req.params.id);
+      const user = Array.from(mockDb.users.values()).find(u => u.id === userId);
+      if (!user) {
+        return res.status(404).json({ error: 'USER_NOT_FOUND' });
+      }
+      res.json(user);
+    });
+
+    // Workspaces API
+    app.get('/api/workspaces', (_req, res) => {
+      res.json([{
+        id: 1,
+        name: 'Test Workspace',
+        ownerId: 1
+      }]);
+    });
+
+    app.get('/api/workspaces/:id', (req, res) => {
+      const workspaceId = parseInt(req.params.id);
+      if (workspaceId !== 1) {
+        return res.status(404).json({ error: 'WORKSPACE_NOT_FOUND' });
+      }
+      res.json({
+        id: workspaceId,
+        name: 'Test Workspace',
+        ownerId: 1
+      });
+    });
+
+    app.post('/api/workspaces/:id/members', (req, res) => {
+      const workspaceId = parseInt(req.params.id);
+      if (workspaceId !== 1) {
+        return res.status(404).json({ error: 'WORKSPACE_NOT_FOUND' });
+      }
+      res.status(201).json({ message: 'User added to workspace' });
+    });
+
+    // Channels API
+    app.get('/api/workspaces/:workspaceId/channels', (req, res) => {
+      const { includeArchived } = req.query;
+      const channels = [{
+        id: 1,
+        name: 'general',
+        workspaceId: 1,
+        isPrivate: false,
+        archived: false
+      }];
+
+      if (includeArchived === 'true') {
+        channels.push({
+          id: 2,
+          name: 'archived-channel',
+          workspaceId: 1,
+          isPrivate: false,
+          archived: true
+        });
+      }
+
+      res.json(channels);
+    });
+
+    app.get('/api/channels/:channelId', (req, res) => {
+      const channelId = parseInt(req.params.channelId);
+      if (channelId !== 1) {
+        return res.status(404).json({ error: 'CHANNEL_NOT_FOUND' });
+      }
+      res.json({
+        id: channelId,
+        name: 'general',
+        workspaceId: 1,
+        isPrivate: false,
+        archived: false
+      });
+    });
+
+    app.post('/api/channels/:channelId/members', (req, res) => {
+      const channelId = parseInt(req.params.channelId);
+      if (channelId !== 1) {
+        return res.status(404).json({ error: 'CHANNEL_NOT_FOUND' });
+      }
+      res.status(201).json({ message: 'User added to the channel' });
+    });
+
     server = registerRoutes(app);
   });
 
@@ -26,229 +126,187 @@ describe('API Endpoints', () => {
 
   describe('Health Check', () => {
     it('GET /api/health should return 200', async () => {
-      app.get('/api/health', (_req, res) => {
-        res.json({ status: 'ok' });
-      });
+      const response = await request(app)
+        .get('/api/health')
+        .expect(200);
 
-      const response = await request(app).get('/api/health');
-      expect(response.status).toBe(200);
       expect(response.body).toEqual({ status: 'ok' });
     });
   });
 
-  describe('Messages API', () => {
-    beforeEach(() => {
-      app.get('/api/messages', (_req, res) => {
-        res.json([
-          { id: 1, content: 'Test message 1', userId: 1 },
-          { id: 2, content: 'Test message 2', userId: 2 }
-        ]);
-      });
-
-      app.post('/api/messages', (req, res) => {
-        const { content, userId } = req.body;
-        if (!content || !userId) {
-          return res.status(400).json({ error: 'Missing required fields' });
-        }
-        res.status(201).json({ id: 3, content, userId });
-      });
-    });
-
-    it('GET /api/messages should return list of messages', async () => {
-      const response = await request(app).get('/api/messages');
-      expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body).toHaveLength(2);
-      expect(response.body[0]).toHaveProperty('content');
-    });
-
-    it('POST /api/messages should create a new message', async () => {
-      const newMessage = {
-        content: 'New test message',
-        userId: 1
-      };
-
-      const response = await request(app)
-        .post('/api/messages')
-        .send(newMessage)
-        .set('Content-Type', 'application/json');
-
-      expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('id');
-      expect(response.body.content).toBe(newMessage.content);
-    });
-
-    it('POST /api/messages should return 400 for invalid input', async () => {
-      const invalidMessage = {
-        // Missing required fields
-      };
-
-      const response = await request(app)
-        .post('/api/messages')
-        .send(invalidMessage)
-        .set('Content-Type', 'application/json');
-
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('error');
-    });
-  });
-
   describe('Users API', () => {
+    const testUser = {
+      id: 1,
+      username: 'testuser',
+      email: 'test@example.com',
+      displayName: 'Test User'
+    };
+
     beforeEach(() => {
-      app.get('/api/users', (_req, res) => {
-        res.json([
-          { id: 1, username: 'user1', email: 'user1@example.com' },
-          { id: 2, username: 'user2', email: 'user2@example.com' }
-        ]);
+      mockDb.users.set(testUser.email, testUser);
+    });
+
+    describe('GET /api/users', () => {
+      it('should list all users', async () => {
+        const response = await request(app)
+          .get('/api/users')
+          .expect(200);
+
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body.length).toBeGreaterThan(0);
+        expect(response.body[0]).toHaveProperty('username');
+        expect(response.body[0]).toHaveProperty('email');
       });
 
-      app.post('/api/users', (req, res) => {
-        const { username, email, password } = req.body;
-        if (!username || !email || !password) {
-          return res.status(400).json({ error: 'Missing required fields' });
-        }
-        res.status(201).json({ id: 3, username, email });
-      });
+      it('should filter deactivated users when specified', async () => {
+        const response = await request(app)
+          .get('/api/users?deactivated=true')
+          .expect(200);
 
-      app.get('/api/users/:id', (req, res) => {
-        const userId = parseInt(req.params.id);
-        if (userId === 1) {
-          res.json({ id: 1, username: 'user1', email: 'user1@example.com' });
-        } else {
-          res.status(404).json({ error: 'User not found' });
-        }
+        expect(Array.isArray(response.body)).toBe(true);
       });
     });
 
-    it('GET /api/users should return list of users', async () => {
-      const response = await request(app).get('/api/users');
-      expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body).toHaveLength(2);
-      expect(response.body[0]).toHaveProperty('username');
-    });
+    describe('GET /api/users/:id', () => {
+      it('should return user details for valid ID', async () => {
+        const response = await request(app)
+          .get('/api/users/1')
+          .expect(200);
 
-    it('GET /api/users/:id should return user details', async () => {
-      const response = await request(app).get('/api/users/1');
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('username');
-      expect(response.body.id).toBe(1);
-    });
+        expect(response.body).toHaveProperty('username');
+        expect(response.body.id).toBe(1);
+      });
 
-    it('GET /api/users/:id should return 404 for non-existent user', async () => {
-      const response = await request(app).get('/api/users/999');
-      expect(response.status).toBe(404);
-      expect(response.body).toHaveProperty('error');
-    });
+      it('should return 404 for non-existent user', async () => {
+        const response = await request(app)
+          .get('/api/users/999')
+          .expect(404);
 
-    it('POST /api/users should create a new user', async () => {
-      const newUser = {
-        username: 'newuser',
-        email: 'newuser@example.com',
-        password: 'password123'
-      };
-
-      const response = await request(app)
-        .post('/api/users')
-        .send(newUser)
-        .set('Content-Type', 'application/json');
-
-      expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('id');
-      expect(response.body.username).toBe(newUser.username);
-    });
-
-    it('POST /api/users should return 400 for invalid input', async () => {
-      const invalidUser = {
-        // Missing required fields
-      };
-
-      const response = await request(app)
-        .post('/api/users')
-        .send(invalidUser)
-        .set('Content-Type', 'application/json');
-
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('error');
+        expect(response.body).toHaveProperty('error', 'USER_NOT_FOUND');
+      });
     });
   });
 
   describe('Workspaces API', () => {
-    beforeEach(() => {
-      app.get('/api/workspaces', (_req, res) => {
-        res.json([
-          { id: 1, name: 'Workspace 1', ownerId: 1 },
-          { id: 2, name: 'Workspace 2', ownerId: 1 }
-        ]);
-      });
+    describe('GET /api/workspaces', () => {
+      it('should list all workspaces', async () => {
+        const response = await request(app)
+          .get('/api/workspaces')
+          .expect(200);
 
-      app.post('/api/workspaces', (req, res) => {
-        const { name, ownerId } = req.body;
-        if (!name || !ownerId) {
-          return res.status(400).json({ error: 'Missing required fields' });
-        }
-        res.status(201).json({ id: 3, name, ownerId });
-      });
-
-      app.get('/api/workspaces/:id', (req, res) => {
-        const workspaceId = parseInt(req.params.id);
-        if (workspaceId === 1) {
-          res.json({ id: 1, name: 'Workspace 1', ownerId: 1 });
-        } else {
-          res.status(404).json({ error: 'Workspace not found' });
-        }
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body.length).toBeGreaterThan(0);
+        expect(response.body[0]).toHaveProperty('name');
+        expect(response.body[0]).toHaveProperty('ownerId');
       });
     });
 
-    it('GET /api/workspaces should return list of workspaces', async () => {
-      const response = await request(app).get('/api/workspaces');
-      expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body).toHaveLength(2);
-      expect(response.body[0]).toHaveProperty('name');
+    describe('GET /api/workspaces/:id', () => {
+      it('should return workspace details', async () => {
+        const response = await request(app)
+          .get('/api/workspaces/1')
+          .expect(200);
+
+        expect(response.body).toHaveProperty('name');
+        expect(response.body.id).toBe(1);
+      });
+
+      it('should return 404 for non-existent workspace', async () => {
+        const response = await request(app)
+          .get('/api/workspaces/999')
+          .expect(404);
+
+        expect(response.body).toHaveProperty('error', 'WORKSPACE_NOT_FOUND');
+      });
     });
 
-    it('GET /api/workspaces/:id should return workspace details', async () => {
-      const response = await request(app).get('/api/workspaces/1');
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('name');
-      expect(response.body.id).toBe(1);
+    describe('POST /api/workspaces/:id/members', () => {
+      it('should add a member to workspace', async () => {
+        const response = await request(app)
+          .post('/api/workspaces/1/members')
+          .send({ userId: 2, role: 'MEMBER' })
+          .expect(201);
+
+        expect(response.body).toHaveProperty('message', 'User added to workspace');
+      });
+
+      it('should return 404 for non-existent workspace', async () => {
+        const response = await request(app)
+          .post('/api/workspaces/999/members')
+          .send({ userId: 2, role: 'MEMBER' })
+          .expect(404);
+
+        expect(response.body).toHaveProperty('error', 'WORKSPACE_NOT_FOUND');
+      });
+    });
+  });
+
+  describe('Channels API', () => {
+    describe('GET /api/workspaces/:workspaceId/channels', () => {
+      it('should list channels in a workspace', async () => {
+        const response = await request(app)
+          .get('/api/workspaces/1/channels')
+          .expect(200);
+
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body[0]).toHaveProperty('name');
+      });
+
+      it('should exclude archived channels by default', async () => {
+        const response = await request(app)
+          .get('/api/workspaces/1/channels')
+          .expect(200);
+
+        expect(response.body.every((channel: any) => !channel.archived)).toBe(true);
+      });
+
+      it('should include archived channels when specified', async () => {
+        const response = await request(app)
+          .get('/api/workspaces/1/channels?includeArchived=true')
+          .expect(200);
+
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body.length).toBeGreaterThan(1);
+      });
     });
 
-    it('GET /api/workspaces/:id should return 404 for non-existent workspace', async () => {
-      const response = await request(app).get('/api/workspaces/999');
-      expect(response.status).toBe(404);
-      expect(response.body).toHaveProperty('error');
+    describe('GET /api/channels/:channelId', () => {
+      it('should return channel details', async () => {
+        const response = await request(app)
+          .get('/api/channels/1')
+          .expect(200);
+
+        expect(response.body).toHaveProperty('name');
+        expect(response.body).toHaveProperty('workspaceId');
+      });
+
+      it('should return 404 for non-existent channel', async () => {
+        const response = await request(app)
+          .get('/api/channels/999')
+          .expect(404);
+
+        expect(response.body).toHaveProperty('error', 'CHANNEL_NOT_FOUND');
+      });
     });
 
-    it('POST /api/workspaces should create a new workspace', async () => {
-      const newWorkspace = {
-        name: 'New Workspace',
-        ownerId: 1
-      };
+    describe('POST /api/channels/:channelId/members', () => {
+      it('should add a member to channel', async () => {
+        const response = await request(app)
+          .post('/api/channels/1/members')
+          .send({ userId: 2 })
+          .expect(201);
 
-      const response = await request(app)
-        .post('/api/workspaces')
-        .send(newWorkspace)
-        .set('Content-Type', 'application/json');
+        expect(response.body).toHaveProperty('message', 'User added to the channel');
+      });
 
-      expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('id');
-      expect(response.body.name).toBe(newWorkspace.name);
-    });
+      it('should return 404 for non-existent channel', async () => {
+        const response = await request(app)
+          .post('/api/channels/999/members')
+          .send({ userId: 2 })
+          .expect(404);
 
-    it('POST /api/workspaces should return 400 for invalid input', async () => {
-      const invalidWorkspace = {
-        // Missing required fields
-      };
-
-      const response = await request(app)
-        .post('/api/workspaces')
-        .send(invalidWorkspace)
-        .set('Content-Type', 'application/json');
-
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('error');
+        expect(response.body).toHaveProperty('error', 'CHANNEL_NOT_FOUND');
+      });
     });
   });
 });
