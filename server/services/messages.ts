@@ -36,8 +36,8 @@ export class MessagesService {
       userId: msg.userId || 0,
       channelId: msg.channelId || 0,
       messageId: msg.id, // Map id to messageId as per OpenAPI spec
-      createdAt: msg.createdAt.toISOString(),
-      updatedAt: msg.updatedAt.toISOString(),
+      createdAt: msg.createdAt,
+      updatedAt: msg.updatedAt,
       deleted: msg.deleted || false
     }));
   }
@@ -56,8 +56,8 @@ export class MessagesService {
       userId: msg.userId || 0,
       channelId: msg.channelId || 0,
       messageId: msg.id,
-      createdAt: msg.createdAt.toISOString(),
-      updatedAt: msg.updatedAt.toISOString(),
+      createdAt: msg.createdAt,
+      updatedAt: msg.updatedAt,
       deleted: msg.deleted || false
     };
   }
@@ -69,7 +69,6 @@ export class MessagesService {
         content: request.content,
         userId: request.userId,
         channelId: request.channelId,
-        parentMessageId: null,
         deleted: false,
         createdAt: now,
         updatedAt: now,
@@ -82,8 +81,8 @@ export class MessagesService {
       userId: msg.userId || 0,
       channelId: msg.channelId || 0,
       messageId: msg.id,
-      createdAt: msg.createdAt.toISOString(),
-      updatedAt: msg.updatedAt.toISOString(),
+      createdAt: msg.createdAt,
+      updatedAt: msg.updatedAt,
       deleted: msg.deleted || false
     };
   }
