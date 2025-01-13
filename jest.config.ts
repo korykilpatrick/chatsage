@@ -14,11 +14,15 @@ const config: Config.InitialOptions = {
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: './tsconfig.json',
+      useESM: true,
       diagnostics: {
         warnOnly: true // This will prevent TypeScript errors from failing tests
       }
     }]
   },
+  extensionsToTreatAsEsm: ['.ts'],
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  testMatch: ['**/__tests__/**/*.test.ts'],
   modulePathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/dist/'],
   testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/dist/']
 };
