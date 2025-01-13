@@ -5,7 +5,7 @@ import session from "express-session";
 import createMemoryStore from "memorystore";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
-import { users, insertUserSchema, type User, type BaseUser } from "@db/schema";
+import { users, insertUserSchema, type User as SelectUser } from "@db/schema";
 import { db } from "@db";
 import { eq } from "drizzle-orm";
 
@@ -31,8 +31,7 @@ const crypto = {
 // extend express user object with our schema
 declare global {
   namespace Express {
-    // Use our User type that extends BaseUser
-    interface User extends User {}
+    interface User extends SelectUser { }
   }
 }
 
@@ -65,7 +64,7 @@ export function setupAuth(app: Express) {
         const [user] = await db
           .select()
           .from(users)
-          .where(eq(users.displayName, username)) // Use displayName as username
+          .where(eq(users.username, username))
           .limit(1);
 
         if (!user) {
@@ -75,42 +74,24 @@ export function setupAuth(app: Express) {
         if (!isMatch) {
           return done(null, false, { message: "Incorrect password." });
         }
-
-        // Add username property
-        const userWithUsername: User = {
-          ...user,
-          username: user.displayName,
-        };
-
-        return done(null, userWithUsername);
+        return done(null, user);
       } catch (err) {
         return done(err);
       }
     })
   );
 
-  passport.serializeUser((user: User, done) => {
+  passport.serializeUser((user, done) => {
     done(null, user.id);
   });
 
   passport.deserializeUser(async (id: number, done) => {
     try {
-      const [baseUser] = await db
+      const [user] = await db
         .select()
         .from(users)
         .where(eq(users.id, id))
         .limit(1);
-
-      if (!baseUser) {
-        return done(new Error('User not found'));
-      }
-
-      // Add username property
-      const user: User = {
-        ...baseUser,
-        username: baseUser.displayName,
-      };
-
       done(null, user);
     } catch (err) {
       done(err);
@@ -126,15 +107,13 @@ export function setupAuth(app: Express) {
           .send("Invalid input: " + result.error.issues.map(i => i.message).join(", "));
       }
 
-      // Map username to displayName if it exists in the request
-      const { password, ...userData } = result.data;
-      const displayName = userData.displayName || req.body.username; // Handle both cases
+      const { username, password } = result.data;
 
       // Check if user already exists
       const [existingUser] = await db
         .select()
         .from(users)
-        .where(eq(users.displayName, displayName))
+        .where(eq(users.username, username))
         .limit(1);
 
       if (existingUser) {
@@ -148,26 +127,19 @@ export function setupAuth(app: Express) {
       const [newUser] = await db
         .insert(users)
         .values({
-          ...userData,
-          displayName,
+          ...result.data,
           password: hashedPassword,
         })
         .returning();
 
-      // Add username property
-      const userWithUsername: User = {
-        ...newUser,
-        username: newUser.displayName,
-      };
-
       // Log the user in after registration
-      req.login(userWithUsername, (err) => {
+      req.login(newUser, (err) => {
         if (err) {
           return next(err);
         }
         return res.json({
           message: "Registration successful",
-          user: { id: userWithUsername.id, username: userWithUsername.username },
+          user: { id: newUser.id, username: newUser.username },
         });
       });
     } catch (error) {
@@ -176,7 +148,14 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", (req, res, next) => {
-    passport.authenticate("local", (err: any, user: User | false, info: IVerifyOptions) => {
+    const result = insertUserSchema.safeParse(req.body);
+    if (!result.success) {
+      return res
+        .status(400)
+        .send("Invalid input: " + result.error.issues.map(i => i.message).join(", "));
+    }
+
+    const cb = (err: any, user: Express.User, info: IVerifyOptions) => {
       if (err) {
         return next(err);
       }
@@ -195,7 +174,8 @@ export function setupAuth(app: Express) {
           user: { id: user.id, username: user.username },
         });
       });
-    })(req, res, next);
+    };
+    passport.authenticate("local", cb)(req, res, next);
   });
 
   app.post("/api/logout", (req, res) => {

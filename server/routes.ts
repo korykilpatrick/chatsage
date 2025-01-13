@@ -3,49 +3,14 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { setupWebSocket } from "./socket";
 import { db } from "@db";
-import { channels, messages, userChannels, toApiUser, type ApiUser, type User } from "@db/schema";
+import { channels, messages, userChannels } from "@db/schema";
 import { and, eq } from "drizzle-orm";
-import { 
-  AuthApi, 
-  ChannelsApi, 
-  EmojisApi, 
-  FilesApi, 
-  MessagesApi, 
-  PinningApi, 
-  ReactionsApi, 
-  SearchApi, 
-  UsersApi, 
-  WorkspacesApi 
-} from "./generated/api/apis";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
   const httpServer = createServer(app);
   setupWebSocket(httpServer);
-
-  // Initialize API instances
-  const authApi = new AuthApi();
-  const channelsApi = new ChannelsApi();
-  const emojisApi = new EmojisApi();
-  const filesApi = new FilesApi();
-  const messagesApi = new MessagesApi();
-  const pinningApi = new PinningApi();
-  const reactionsApi = new ReactionsApi();
-  const searchApi = new SearchApi();
-  const usersApi = new UsersApi();
-  const workspacesApi = new WorkspacesApi();
-
-  // Set base path for all APIs to use our Express server
-  const basePath = process.env.NODE_ENV === 'production' 
-    ? 'https://api.chatsage.com/v1' 
-    : 'http://localhost:5000/api/v1';
-
-  [authApi, channelsApi, emojisApi, filesApi, messagesApi, 
-   pinningApi, reactionsApi, searchApi, usersApi, workspacesApi]
-    .forEach(api => {
-      api.basePath = basePath;
-    });
 
   // Channel routes
   app.get("/api/channels", async (req, res) => {
@@ -54,7 +19,7 @@ export function registerRoutes(app: Express): Server {
     }
 
     const userChannelsList = await db.query.userChannels.findMany({
-      where: eq(userChannels.userId, (req.user as User).id),
+      where: eq(userChannels.userId, req.user.id),
       with: {
         channel: true
       }
@@ -74,7 +39,7 @@ export function registerRoutes(app: Express): Server {
       .returning();
 
     await db.insert(userChannels)
-      .values({ userId: (req.user as User).id, channelId: newChannel.id });
+      .values({ userId: req.user.id, channelId: newChannel.id });
 
     res.status(201).json(newChannel);
   });
@@ -97,10 +62,7 @@ export function registerRoutes(app: Express): Server {
       orderBy: (messages, { desc }) => [desc(messages.createdAt)]
     });
 
-    res.json(channelMessages.map(msg => ({
-      ...msg,
-      user: msg.user ? toApiUser(msg.user) : null
-    })));
+    res.json(channelMessages);
   });
 
   return httpServer;

@@ -1,35 +1,13 @@
-import { pgTable, text, boolean, integer, timestamp, pgEnum, serial } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { relations, type InferModel } from "drizzle-orm";
 
-// Keep existing enums and types
+// Enums
 export const presenceEnum = pgEnum('user_presence_enum', ['ONLINE', 'AWAY', 'DND', 'OFFLINE']);
 export const workspaceRoleEnum = pgEnum('workspace_role_enum', ['OWNER', 'ADMIN', 'MEMBER', 'GUEST']);
 export const channelTypeEnum = pgEnum('channel_type_enum', ['PUBLIC', 'PRIVATE', 'DM']);
 
-// Add API types to match generated code
-export interface ApiUser {
-  id: number;
-  email: string;
-  displayName: string;
-  password: string;
-  profilePicture: string | null;
-  statusMessage: string | null;
-  lastKnownPresence: "ONLINE" | "AWAY" | "DND" | "OFFLINE" | null;
-  emailVerified: boolean;
-  lastLogin: Date | null;
-  deactivated: boolean;
-  theme: string;
-  createdAt: Date;
-  updatedAt: Date;
-  // Add username as an alias of displayName for backward compatibility
-  get username(): string {
-    return this.displayName;
-  }
-}
-
-// Keep existing tables and schemas
-// No changes to the actual database structure
+// Tables
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
@@ -184,21 +162,32 @@ export const messagesRelations = relations(messages, ({ one, many }) => ({
   pins: many(pinnedMessages),
 }));
 
-// Schemas for validation and types
+// Schemas for validation
 export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
-export type User = typeof users.$inferSelect & {
-  username?: string; // Add username as optional alias of displayName
-};
-export type InsertUser = typeof users.$inferInsert;
 
 export const insertWorkspaceSchema = createInsertSchema(workspaces);
 export const selectWorkspaceSchema = createSelectSchema(workspaces);
-export type Workspace = typeof workspaces.$inferSelect;
-export type InsertWorkspace = typeof workspaces.$inferInsert;
 
 export const insertChannelSchema = createInsertSchema(channels);
 export const selectChannelSchema = createSelectSchema(channels);
+
+export const insertMessageSchema = createInsertSchema(messages);
+export const selectMessageSchema = createSelectSchema(messages);
+
+export const insertFileSchema = createInsertSchema(files);
+export const selectFileSchema = createSelectSchema(files);
+
+export const insertEmojiSchema = createInsertSchema(emojis);
+export const selectEmojiSchema = createSelectSchema(emojis);
+
+// Types
+export type User = typeof users.$inferSelect;
+export type InsertUser = typeof users.$inferInsert;
+
+export type Workspace = typeof workspaces.$inferSelect;
+export type InsertWorkspace = typeof workspaces.$inferInsert;
+
 export type Channel = typeof channels.$inferSelect;
 export type InsertChannel = typeof channels.$inferInsert;
 
