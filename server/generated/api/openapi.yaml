@@ -1,0 +1,1798 @@
+openapi: 3.0.0
+info:
+  description: "Slack-like messaging platform with universal soft-deletes, selective\
+    \ partitioning, email-based verification, triggers for updatedAt, real-time features,\
+    \ error code enumeration, and recommended monorepo structure."
+  title: Chat Sage API
+  version: v1.0.1
+servers:
+- description: Production server (v1)
+  url: https://api.chatsage.com/v1
+- description: Local development server (v1)
+  url: http://localhost:3000/v1
+tags:
+- description: Authentication endpoints
+  name: Auth
+- description: "User management (reactivation, etc.)"
+  name: Users
+- description: Workspace management (archived instead of removed)
+  name: Workspaces
+- description: Channel operations (soft-delete archived)
+  name: Channels
+- description: Message and thread operations (soft-deleted)
+  name: Messages
+- description: File uploads and management
+  name: Files
+- description: Custom emoji (soft-deleted)
+  name: Emojis
+- description: "Search across messages, channels, etc."
+  name: Search
+- description: Pin/unpin messages
+  name: Pinning
+- description: Add/remove message reactions
+  name: Reactions
+paths:
+  /auth/register:
+    post:
+      operationId: authRegisterPOST
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/_auth_register_post_request'
+        description: Creates a user record (deactivated=false) and sends a verification
+          email.
+        required: true
+      responses:
+        "201":
+          description: User created; verification email sent
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid request data
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Email already in use
+      summary: Register a new user (email-based verification)
+      tags:
+      - Auth
+      x-eov-operation-handler: controllers/AuthController
+  /auth/verify-email:
+    post:
+      operationId: authVerifyEmailPOST
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/_auth_verify_email_post_request'
+        required: true
+      responses:
+        "200":
+          description: Email verified; user can now log in
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid token or token expired
+      summary: Verify user email
+      tags:
+      - Auth
+      x-eov-operation-handler: controllers/AuthController
+  /auth/login:
+    post:
+      operationId: authLoginPOST
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/_auth_login_post_request'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+          description: Login successful
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: INVALID_CREDENTIALS
+      summary: User Login
+      tags:
+      - Auth
+      x-eov-operation-handler: controllers/AuthController
+  /auth/refresh:
+    post:
+      operationId: authRefreshPOST
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/_auth_refresh_post_request'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+          description: Token refreshed
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid or expired token
+      summary: Refresh Access Token
+      tags:
+      - Auth
+      x-eov-operation-handler: controllers/AuthController
+  /auth/logout:
+    post:
+      operationId: authLogoutPOST
+      responses:
+        "200":
+          description: Logout successful
+      summary: Logout user
+      tags:
+      - Auth
+      x-eov-operation-handler: controllers/AuthController
+  /users:
+    get:
+      operationId: usersGET
+      parameters:
+      - description: "If true, returns only deactivated users"
+        explode: true
+        in: query
+        name: deactivated
+        required: false
+        schema:
+          type: boolean
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/User'
+                type: array
+          description: A list of users (filtered by deactivated if provided)
+      summary: List all users
+      tags:
+      - Users
+      x-eov-operation-handler: controllers/UsersController
+    post:
+      operationId: usersPOST
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: User created
+      summary: Create a new user (alternative to /auth/register)
+      tags:
+      - Users
+      x-eov-operation-handler: controllers/UsersController
+  /users/me:
+    get:
+      operationId: usersMeGET
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: Current user details
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: UNAUTHORIZED
+      summary: Get current authenticated user
+      tags:
+      - Users
+      x-eov-operation-handler: controllers/UsersController
+  /users/{userId}:
+    delete:
+      description: "Sets deactivated=TRUE, does not remove the user row."
+      operationId: usersUserIdDELETE
+      parameters:
+      - explode: false
+        in: path
+        name: userId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "204":
+          description: User deactivated
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: USER_NOT_FOUND
+      summary: Deactivate (soft-delete) a user
+      tags:
+      - Users
+      x-eov-operation-handler: controllers/UsersController
+    get:
+      operationId: usersUserIdGET
+      parameters:
+      - explode: false
+        in: path
+        name: userId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: User details
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: USER_NOT_FOUND
+      summary: Retrieve a specific user
+      tags:
+      - Users
+      x-eov-operation-handler: controllers/UsersController
+    put:
+      operationId: usersUserIdPUT
+      parameters:
+      - explode: false
+        in: path
+        name: userId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: User updated
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: USER_NOT_FOUND
+      summary: Update a user's profile
+      tags:
+      - Users
+      x-eov-operation-handler: controllers/UsersController
+  /users/{userId}/reactivate:
+    post:
+      operationId: usersUserIdReactivatePOST
+      parameters:
+      - explode: false
+        in: path
+        name: userId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: User reactivated
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: USER_NOT_FOUND
+      summary: Reactivate a previously deactivated user
+      tags:
+      - Users
+      x-eov-operation-handler: controllers/UsersController
+  /workspaces:
+    get:
+      operationId: workspacesGET
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Workspace'
+                type: array
+          description: Array of workspaces
+      summary: List all workspaces
+      tags:
+      - Workspaces
+      x-eov-operation-handler: controllers/WorkspacesController
+  /workspaces/{workspaceId}:
+    delete:
+      description: Sets archived=TRUE instead of physical removal.
+      operationId: workspacesWorkspaceIdDELETE
+      parameters:
+      - explode: false
+        in: path
+        name: workspaceId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "204":
+          description: Workspace archived
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: WORKSPACE_NOT_FOUND
+      summary: Soft-delete (archive) a workspace
+      tags:
+      - Workspaces
+      x-eov-operation-handler: controllers/WorkspacesController
+    get:
+      operationId: workspacesWorkspaceIdGET
+      parameters:
+      - explode: false
+        in: path
+        name: workspaceId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+          description: Workspace details
+      summary: Get workspace details
+      tags:
+      - Workspaces
+      x-eov-operation-handler: controllers/WorkspacesController
+    put:
+      operationId: workspacesWorkspaceIdPUT
+      parameters:
+      - explode: false
+        in: path
+        name: workspaceId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceUpdateRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+          description: Workspace updated
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: WORKSPACE_NOT_FOUND
+      summary: Update a workspace
+      tags:
+      - Workspaces
+      x-eov-operation-handler: controllers/WorkspacesController
+  /workspaces/{workspaceId}/members:
+    delete:
+      operationId: workspacesWorkspaceIdMembersDELETE
+      parameters:
+      - explode: false
+        in: path
+        name: workspaceId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      - explode: true
+        in: query
+        name: userId
+        required: true
+        schema:
+          type: integer
+        style: form
+      responses:
+        "204":
+          description: User removed
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: WORKSPACE_NOT_FOUND or USER_NOT_FOUND
+      summary: Remove a user from a workspace
+      tags:
+      - Workspaces
+      x-eov-operation-handler: controllers/WorkspacesController
+    post:
+      operationId: workspacesWorkspaceIdMembersPOST
+      parameters:
+      - explode: false
+        in: path
+        name: workspaceId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/_workspaces__workspaceId__members_post_request'
+        description: Associates a user with the workspace.
+        required: true
+      responses:
+        "201":
+          description: User added to workspace
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: WORKSPACE_NOT_FOUND or USER_NOT_FOUND
+      summary: Add a user to a workspace
+      tags:
+      - Workspaces
+      x-eov-operation-handler: controllers/WorkspacesController
+  /workspaces/{workspaceId}/channels:
+    get:
+      operationId: workspacesWorkspaceIdChannelsGET
+      parameters:
+      - explode: false
+        in: path
+        name: workspaceId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      - explode: true
+        in: query
+        name: includeArchived
+        required: false
+        schema:
+          default: false
+          type: boolean
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Channel'
+                type: array
+          description: List of channels (archived excluded unless includeArchived=true)
+      summary: List channels in a workspace
+      tags:
+      - Channels
+      x-eov-operation-handler: controllers/ChannelsController
+  /channels:
+    get:
+      operationId: channelsGET
+      parameters:
+      - explode: true
+        in: query
+        name: includeArchived
+        required: false
+        schema:
+          default: false
+          type: boolean
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Channel'
+                type: array
+          description: Global list of channels
+      summary: "Global: list all channels (admin only)"
+      tags:
+      - Channels
+      x-eov-operation-handler: controllers/ChannelsController
+    post:
+      operationId: channelsPOST
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelCreateRequest'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+          description: Channel created
+      summary: "Global: create a channel"
+      tags:
+      - Channels
+      x-eov-operation-handler: controllers/ChannelsController
+  /channels/{channelId}:
+    delete:
+      description: Sets archived=TRUE instead of physical removal.
+      operationId: channelsChannelIdDELETE
+      parameters:
+      - explode: false
+        in: path
+        name: channelId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "204":
+          description: Channel archived
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: CHANNEL_NOT_FOUND
+      summary: Archive (soft-delete) a channel
+      tags:
+      - Channels
+      x-eov-operation-handler: controllers/ChannelsController
+    get:
+      operationId: channelsChannelIdGET
+      parameters:
+      - explode: false
+        in: path
+        name: channelId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+          description: Channel info
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: CHANNEL_NOT_FOUND
+      summary: Get channel details (includes archived if it exists)
+      tags:
+      - Channels
+      x-eov-operation-handler: controllers/ChannelsController
+    put:
+      operationId: channelsChannelIdPUT
+      parameters:
+      - explode: false
+        in: path
+        name: channelId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelUpdateRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+          description: Channel updated
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: CHANNEL_NOT_FOUND
+      summary: Update channel details
+      tags:
+      - Channels
+      x-eov-operation-handler: controllers/ChannelsController
+  /channels/{channelId}/members:
+    delete:
+      operationId: channelsChannelIdMembersDELETE
+      parameters:
+      - explode: false
+        in: path
+        name: channelId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      - explode: true
+        in: query
+        name: userId
+        required: true
+        schema:
+          type: integer
+        style: form
+      responses:
+        "204":
+          description: User removed from channel
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: CHANNEL_NOT_FOUND or USER_NOT_FOUND
+      summary: Remove a member from the channel
+      tags:
+      - Channels
+      x-eov-operation-handler: controllers/ChannelsController
+    post:
+      operationId: channelsChannelIdMembersPOST
+      parameters:
+      - explode: false
+        in: path
+        name: channelId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/_channels__channelId__members_post_request'
+        required: true
+      responses:
+        "201":
+          description: User added to the channel
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: CHANNEL_NOT_FOUND or USER_NOT_FOUND
+      summary: Add a member to the channel
+      tags:
+      - Channels
+      x-eov-operation-handler: controllers/ChannelsController
+  /channels/{channelId}/messages:
+    get:
+      operationId: channelsChannelIdMessagesGET
+      parameters:
+      - explode: false
+        in: path
+        name: channelId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      - explode: true
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 20
+          type: integer
+        style: form
+      - explode: true
+        in: query
+        name: offset
+        required: false
+        schema:
+          default: 0
+          type: integer
+        style: form
+      - explode: true
+        in: query
+        name: before
+        required: false
+        schema:
+          format: date-time
+          type: string
+        style: form
+      - explode: true
+        in: query
+        name: includeDeleted
+        required: false
+        schema:
+          default: false
+          type: boolean
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Message'
+                type: array
+          description: Array of messages
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: CHANNEL_NOT_FOUND
+      summary: List messages in a channel with pagination (excluded deleted unless
+        requested)
+      tags:
+      - Messages
+      x-eov-operation-handler: controllers/MessagesController
+    post:
+      operationId: channelsChannelIdMessagesPOST
+      parameters:
+      - explode: false
+        in: path
+        name: channelId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreateRequest'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+          description: Message created
+      summary: Send a message in the channel
+      tags:
+      - Messages
+      x-eov-operation-handler: controllers/MessagesController
+  /messages/{messageId}:
+    delete:
+      description: Sets deleted=true for a Slack-like 'message removed' placeholder.
+      operationId: messagesMessageIdDELETE
+      parameters:
+      - explode: false
+        in: path
+        name: messageId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "204":
+          description: Message soft-deleted
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: MESSAGE_NOT_FOUND
+      summary: Soft-delete a message
+      tags:
+      - Messages
+      x-eov-operation-handler: controllers/MessagesController
+    get:
+      operationId: messagesMessageIdGET
+      parameters:
+      - explode: false
+        in: path
+        name: messageId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+          description: Message details
+      summary: Get message details (including soft-deleted if found)
+      tags:
+      - Messages
+      x-eov-operation-handler: controllers/MessagesController
+    put:
+      operationId: messagesMessageIdPUT
+      parameters:
+      - explode: false
+        in: path
+        name: messageId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageUpdateRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+          description: Message updated
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: MESSAGE_NOT_FOUND
+      summary: Update a message's content
+      tags:
+      - Messages
+      x-eov-operation-handler: controllers/MessagesController
+  /messages/{messageId}/thread:
+    get:
+      operationId: messagesMessageIdThreadGET
+      parameters:
+      - explode: false
+        in: path
+        name: messageId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Message'
+                type: array
+          description: Array of thread messages
+      summary: Retrieve replies in the thread (excludes deleted unless requested)
+      tags:
+      - Messages
+      x-eov-operation-handler: controllers/MessagesController
+    post:
+      operationId: messagesMessageIdThreadPOST
+      parameters:
+      - explode: false
+        in: path
+        name: messageId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreateRequest'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+          description: Reply created
+      summary: Post a reply in the thread
+      tags:
+      - Messages
+      x-eov-operation-handler: controllers/MessagesController
+  /messages/{messageId}/pin:
+    delete:
+      operationId: messagesMessageIdPinDELETE
+      parameters:
+      - explode: false
+        in: path
+        name: messageId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "204":
+          description: Message unpinned
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Pinned message not found
+      summary: Unpin a message
+      tags:
+      - Pinning
+      x-eov-operation-handler: controllers/PinningController
+    post:
+      operationId: messagesMessageIdPinPOST
+      parameters:
+      - explode: false
+        in: path
+        name: messageId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/_messages__messageId__pin_post_request'
+        required: false
+      responses:
+        "201":
+          description: Message pinned
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: MESSAGE_NOT_FOUND
+      summary: Pin a message
+      tags:
+      - Pinning
+      x-eov-operation-handler: controllers/PinningController
+  /messages/{messageId}/reactions:
+    get:
+      operationId: messagesMessageIdReactionsGET
+      parameters:
+      - explode: false
+        in: path
+        name: messageId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Reaction'
+                type: array
+          description: Array of reactions
+      summary: Get all reactions for a message
+      tags:
+      - Reactions
+      x-eov-operation-handler: controllers/ReactionsController
+    post:
+      operationId: messagesMessageIdReactionsPOST
+      parameters:
+      - explode: false
+        in: path
+        name: messageId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/_messages__messageId__reactions_post_request'
+        required: true
+      responses:
+        "201":
+          description: Reaction added
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: MESSAGE_NOT_FOUND or EMOJI_NOT_FOUND
+        "409":
+          description: DUPLICATE_REACTION
+      summary: Add a reaction to a message
+      tags:
+      - Reactions
+      x-eov-operation-handler: controllers/ReactionsController
+  /messages/{messageId}/reactions/{reactionId}:
+    delete:
+      operationId: messagesMessageIdReactionsReactionIdDELETE
+      parameters:
+      - explode: false
+        in: path
+        name: messageId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      - explode: false
+        in: path
+        name: reactionId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "204":
+          description: Reaction removed
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Reaction not found
+      summary: Remove a reaction from a message
+      tags:
+      - Reactions
+      x-eov-operation-handler: controllers/ReactionsController
+  /files:
+    post:
+      operationId: filesPOST
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/_files_post_request'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
+          description: File uploaded
+      summary: Upload a file
+      tags:
+      - Files
+      x-eov-operation-handler: controllers/FilesController
+  /files/{fileId}:
+    delete:
+      operationId: filesFileIdDELETE
+      parameters:
+      - explode: false
+        in: path
+        name: fileId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "204":
+          description: File deleted
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: File not found
+      summary: Delete a file
+      tags:
+      - Files
+      x-eov-operation-handler: controllers/FilesController
+    get:
+      operationId: filesFileIdGET
+      parameters:
+      - explode: false
+        in: path
+        name: fileId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          description: File data or redirect to fileUrl
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: File not found
+      summary: Download or view a file
+      tags:
+      - Files
+      x-eov-operation-handler: controllers/FilesController
+  /emojis:
+    get:
+      operationId: emojisGET
+      parameters:
+      - explode: true
+        in: query
+        name: includeDeleted
+        required: false
+        schema:
+          default: false
+          type: boolean
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Emoji'
+                type: array
+          description: Array of emojis
+      summary: List all emojis (by default excludes deleted unless specified)
+      tags:
+      - Emojis
+      x-eov-operation-handler: controllers/EmojisController
+    post:
+      operationId: emojisPOST
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmojiCreateRequest'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Emoji'
+          description: Emoji created
+      summary: Add a new custom emoji
+      tags:
+      - Emojis
+      x-eov-operation-handler: controllers/EmojisController
+  /emojis/{emojiId}:
+    delete:
+      description: Sets deleted=true instead of physical removal.
+      operationId: emojisEmojiIdDELETE
+      parameters:
+      - explode: false
+        in: path
+        name: emojiId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "204":
+          description: Emoji soft-deleted
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: EMOJI_NOT_FOUND
+      summary: Soft-delete an emoji
+      tags:
+      - Emojis
+      x-eov-operation-handler: controllers/EmojisController
+    get:
+      operationId: emojisEmojiIdGET
+      parameters:
+      - explode: false
+        in: path
+        name: emojiId
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Emoji'
+          description: Emoji details
+      summary: Get specific emoji details
+      tags:
+      - Emojis
+      x-eov-operation-handler: controllers/EmojisController
+  /search:
+    get:
+      operationId: searchGET
+      parameters:
+      - explode: true
+        in: query
+        name: keyword
+        required: false
+        schema:
+          type: string
+        style: form
+      - explode: true
+        in: query
+        name: workspaceId
+        required: false
+        schema:
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/_search_get_200_response'
+          description: Search results (excluding archived/deleted unless included)
+      summary: "Search across messages, channels, and users"
+      tags:
+      - Search
+      x-eov-operation-handler: controllers/SearchController
+components:
+  schemas:
+    AuthTokens:
+      example:
+        accessToken: accessToken
+        refreshToken: refreshToken
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+      type: object
+    ErrorResponse:
+      example:
+        details:
+          code: USER_NOT_FOUND
+          message: message
+        error: error
+      properties:
+        error:
+          type: string
+        details:
+          $ref: '#/components/schemas/ErrorResponse_details'
+      type: object
+    User:
+      example:
+        profilePicture: profilePicture
+        emailVerified: true
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        lastKnownPresence: ONLINE
+        displayName: displayName
+        theme: theme
+        userId: 0
+        email: email
+        statusMessage: statusMessage
+        deactivated: true
+        updatedAt: 2000-01-23T04:56:07.000+00:00
+      properties:
+        userId:
+          type: integer
+        email:
+          type: string
+        displayName:
+          type: string
+        profilePicture:
+          type: string
+        statusMessage:
+          type: string
+        lastKnownPresence:
+          description: Updated by a timer to reflect active or inactive.
+          enum:
+          - ONLINE
+          - AWAY
+          - DND
+          - OFFLINE
+          type: string
+        emailVerified:
+          type: boolean
+        deactivated:
+          type: boolean
+        theme:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      type: object
+    UserCreateRequest:
+      example:
+        password: password
+        displayName: displayName
+        email: email
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        displayName:
+          type: string
+      required:
+      - displayName
+      - email
+      - password
+      type: object
+    UserUpdateRequest:
+      example:
+        profilePicture: profilePicture
+        displayName: displayName
+        theme: theme
+        statusMessage: statusMessage
+      properties:
+        displayName:
+          type: string
+        profilePicture:
+          type: string
+        statusMessage:
+          type: string
+        theme:
+          type: string
+      type: object
+    Workspace:
+      example:
+        archived: true
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        name: name
+        description: description
+        workspaceId: 0
+        updatedAt: 2000-01-23T04:56:07.000+00:00
+      properties:
+        workspaceId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        archived:
+          type: boolean
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      type: object
+    WorkspaceCreateRequest:
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+      required:
+      - name
+      type: object
+    WorkspaceUpdateRequest:
+      example:
+        archived: true
+        name: name
+        description: description
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        archived:
+          type: boolean
+      type: object
+    Channel:
+      example:
+        archived: true
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        name: name
+        topic: topic
+        channelType: PUBLIC
+        channelId: 0
+        workspaceId: 6
+        updatedAt: 2000-01-23T04:56:07.000+00:00
+      properties:
+        channelId:
+          type: integer
+        workspaceId:
+          nullable: true
+          type: integer
+        name:
+          type: string
+        topic:
+          type: string
+        channelType:
+          enum:
+          - PUBLIC
+          - PRIVATE
+          - DM
+          type: string
+        archived:
+          type: boolean
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      type: object
+    ChannelCreateRequest:
+      example:
+        name: name
+        topic: topic
+        channelType: PUBLIC
+        workspaceId: 0
+      properties:
+        workspaceId:
+          type: integer
+        name:
+          type: string
+        topic:
+          type: string
+        channelType:
+          enum:
+          - PUBLIC
+          - PRIVATE
+          - DM
+          type: string
+      required:
+      - name
+      - workspaceId
+      type: object
+    ChannelUpdateRequest:
+      example:
+        archived: true
+        name: name
+        topic: topic
+      properties:
+        name:
+          type: string
+        topic:
+          type: string
+        archived:
+          type: boolean
+      type: object
+    Message:
+      example:
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        deleted: true
+        postedAt: 2000-01-23T04:56:07.000+00:00
+        parentMessageId: 5
+        messageId: 0
+        userId: 6
+        channelId: 1
+        content: content
+        workspaceId: 5
+        updatedAt: 2000-01-23T04:56:07.000+00:00
+      properties:
+        messageId:
+          type: integer
+        userId:
+          nullable: true
+          type: integer
+        channelId:
+          nullable: true
+          type: integer
+        workspaceId:
+          nullable: true
+          type: integer
+        parentMessageId:
+          nullable: true
+          type: integer
+        content:
+          type: string
+        deleted:
+          type: boolean
+        postedAt:
+          format: date-time
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      type: object
+    MessageCreateRequest:
+      example:
+        userId: 0
+        content: content
+      properties:
+        userId:
+          type: integer
+        content:
+          type: string
+      required:
+      - content
+      - userId
+      type: object
+    MessageUpdateRequest:
+      example:
+        content: content
+      properties:
+        content:
+          type: string
+      type: object
+    File:
+      example:
+        filename: filename
+        fileSize: 5
+        messageId: 1
+        fileHash: fileHash
+        fileUrl: fileUrl
+        uploadTime: 2000-01-23T04:56:07.000+00:00
+        userId: 6
+        fileType: fileType
+        fileId: 0
+      properties:
+        fileId:
+          type: integer
+        userId:
+          nullable: true
+          type: integer
+        messageId:
+          nullable: true
+          type: integer
+        filename:
+          type: string
+        fileType:
+          type: string
+        fileUrl:
+          type: string
+        fileSize:
+          type: integer
+        fileHash:
+          type: string
+        uploadTime:
+          format: date-time
+          type: string
+      type: object
+    Emoji:
+      example:
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        emojiId: 0
+        code: code
+        deleted: true
+        updatedAt: 2000-01-23T04:56:07.000+00:00
+      properties:
+        emojiId:
+          type: integer
+        code:
+          type: string
+        deleted:
+          type: boolean
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      type: object
+    EmojiCreateRequest:
+      example:
+        code: code
+      properties:
+        code:
+          type: string
+      required:
+      - code
+      type: object
+    Reaction:
+      example:
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        emojiId: 1
+        reactionId: 0
+        messageId: 6
+        userId: 5
+        updatedAt: 2000-01-23T04:56:07.000+00:00
+      properties:
+        reactionId:
+          type: integer
+        messageId:
+          nullable: true
+          type: integer
+        emojiId:
+          type: integer
+        userId:
+          nullable: true
+          type: integer
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      type: object
+    _auth_register_post_request:
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        displayName:
+          type: string
+      required:
+      - displayName
+      - email
+      - password
+      type: object
+    _auth_verify_email_post_request:
+      properties:
+        token:
+          type: string
+      required:
+      - token
+      type: object
+    _auth_login_post_request:
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required:
+      - email
+      - password
+      type: object
+    _auth_refresh_post_request:
+      properties:
+        refreshToken:
+          type: string
+      required:
+      - refreshToken
+      type: object
+    _workspaces__workspaceId__members_post_request:
+      properties:
+        userId:
+          type: integer
+        role:
+          default: MEMBER
+          enum:
+          - OWNER
+          - ADMIN
+          - MEMBER
+          - GUEST
+          type: string
+      required:
+      - userId
+      type: object
+    _channels__channelId__members_post_request:
+      properties:
+        userId:
+          type: integer
+      required:
+      - userId
+      type: object
+    _messages__messageId__pin_post_request:
+      properties:
+        pinnedReason:
+          type: string
+      type: object
+    _messages__messageId__reactions_post_request:
+      properties:
+        emojiId:
+          type: integer
+      required:
+      - emojiId
+      type: object
+    _files_post_request:
+      properties:
+        file:
+          format: binary
+          type: string
+        messageId:
+          type: integer
+      type: object
+    _search_get_200_response:
+      example:
+        channels:
+        - archived: true
+          createdAt: 2000-01-23T04:56:07.000+00:00
+          name: name
+          topic: topic
+          channelType: PUBLIC
+          channelId: 0
+          workspaceId: 6
+          updatedAt: 2000-01-23T04:56:07.000+00:00
+        - archived: true
+          createdAt: 2000-01-23T04:56:07.000+00:00
+          name: name
+          topic: topic
+          channelType: PUBLIC
+          channelId: 0
+          workspaceId: 6
+          updatedAt: 2000-01-23T04:56:07.000+00:00
+        messages:
+        - createdAt: 2000-01-23T04:56:07.000+00:00
+          deleted: true
+          postedAt: 2000-01-23T04:56:07.000+00:00
+          parentMessageId: 5
+          messageId: 0
+          userId: 6
+          channelId: 1
+          content: content
+          workspaceId: 5
+          updatedAt: 2000-01-23T04:56:07.000+00:00
+        - createdAt: 2000-01-23T04:56:07.000+00:00
+          deleted: true
+          postedAt: 2000-01-23T04:56:07.000+00:00
+          parentMessageId: 5
+          messageId: 0
+          userId: 6
+          channelId: 1
+          content: content
+          workspaceId: 5
+          updatedAt: 2000-01-23T04:56:07.000+00:00
+        users:
+        - profilePicture: profilePicture
+          emailVerified: true
+          createdAt: 2000-01-23T04:56:07.000+00:00
+          lastKnownPresence: ONLINE
+          displayName: displayName
+          theme: theme
+          userId: 0
+          email: email
+          statusMessage: statusMessage
+          deactivated: true
+          updatedAt: 2000-01-23T04:56:07.000+00:00
+        - profilePicture: profilePicture
+          emailVerified: true
+          createdAt: 2000-01-23T04:56:07.000+00:00
+          lastKnownPresence: ONLINE
+          displayName: displayName
+          theme: theme
+          userId: 0
+          email: email
+          statusMessage: statusMessage
+          deactivated: true
+          updatedAt: 2000-01-23T04:56:07.000+00:00
+      properties:
+        channels:
+          items:
+            $ref: '#/components/schemas/Channel'
+          type: array
+        messages:
+          items:
+            $ref: '#/components/schemas/Message'
+          type: array
+        users:
+          items:
+            $ref: '#/components/schemas/User'
+          type: array
+      type: object
+    ErrorResponse_details:
+      example:
+        code: USER_NOT_FOUND
+        message: message
+      properties:
+        code:
+          enum:
+          - USER_NOT_FOUND
+          - WORKSPACE_NOT_FOUND
+          - CHANNEL_NOT_FOUND
+          - MESSAGE_NOT_FOUND
+          - EMOJI_NOT_FOUND
+          - INVALID_CREDENTIALS
+          - UNAUTHORIZED
+          - DUPLICATE_REACTION
+          - FORBIDDEN
+          type: string
+        message:
+          type: string
+      type: object
+  securitySchemes:
+    BearerAuth:
+      bearerFormat: JWT
+      scheme: bearer
+      type: http
