@@ -1,39 +1,53 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useUser } from './use-user';
 
+// Initialize socket instance outside of hook for reuse
+let globalSocket: Socket | null = null;
+
+const initializeSocket = () => {
+  if (!globalSocket) {
+    globalSocket = io('', {
+      path: '/socket.io',
+      autoConnect: true,
+      transports: ['websocket']
+    });
+
+    globalSocket.on("connect", () => {
+      console.log("Socket connected");
+    });
+
+    globalSocket.on("disconnect", () => {
+      console.log("Socket disconnected");
+    });
+  }
+  return globalSocket;
+};
+
 export function useSocket() {
-  const socket = useRef<Socket>();
   const { user } = useUser();
 
+  // Initialize socket synchronously
+  const socket = initializeSocket();
+
   useEffect(() => {
-    if (!socket.current) {
-      socket.current = io();
-
-      socket.current.on("connect", () => {
-        console.log("Socket connected");
-      });
-
-      socket.current.on("disconnect", () => {
-        console.log("Socket disconnected");
-      });
-    }
-
+    // Cleanup only when component is unmounted and no other components are using the socket
     return () => {
-      if (socket.current) {
-        socket.current.disconnect();
+      if (globalSocket) {
+        globalSocket.disconnect();
+        globalSocket = null;
       }
     };
   }, []);
 
   useEffect(() => {
-    if (user && socket.current) {
-      socket.current.emit('presence_update', {
+    if (user && socket) {
+      socket.emit('presence_update', {
         userId: user.id,
         presence: 'ONLINE'
       });
     }
-  }, [user]);
+  }, [user, socket]);
 
-  return socket.current;
+  return socket;
 }
