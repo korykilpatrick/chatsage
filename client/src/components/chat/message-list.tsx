@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useSocket } from "@/hooks/use-socket";
-import type { Message } from "@db/schema";
+import type { Message } from "@/types/schema";
 
 export default function MessageList() {
   const socket = useSocket();

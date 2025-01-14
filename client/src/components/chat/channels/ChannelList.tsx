@@ -1,6 +1,6 @@
 import { FC, useState } from "react";
 import { useLocation } from "wouter";
-import type { Channel } from "@db/schema";
+import type { Channel } from "@/types/schema";
 import ChannelHeader from "./ChannelHeader";
 import ChannelListEntry from "./ChannelListEntry";
 
@@ -10,20 +10,21 @@ interface ChannelListProps {
 
 export const ChannelList: FC<ChannelListProps> = ({ channels }) => {
   const [location, setLocation] = useLocation();
-  const [isExpanded, setIsExpanded] = useState(true);
-  
+  const [isPublicExpanded, setIsPublicExpanded] = useState(true);
+  const [isPrivateExpanded, setIsPrivateExpanded] = useState(true);
+
   const publicChannels = channels.filter(c => c.type === 'PUBLIC');
   const privateChannels = channels.filter(c => c.type === 'PRIVATE');
-  
+
   return (
     <div className="space-y-2">
       <ChannelHeader
         title={`CHANNELS (${publicChannels.length})`}
-        isExpanded={isExpanded}
-        onToggle={() => setIsExpanded(!isExpanded)}
+        isExpanded={isPublicExpanded}
+        onToggle={() => setIsPublicExpanded(!isPublicExpanded)}
       />
-      
-      {isExpanded && (
+
+      {isPublicExpanded && (
         <div className="space-y-1">
           {publicChannels.map(channel => (
             <ChannelListEntry
@@ -35,16 +36,16 @@ export const ChannelList: FC<ChannelListProps> = ({ channels }) => {
           ))}
         </div>
       )}
-      
+
       {privateChannels.length > 0 && (
         <>
           <ChannelHeader
             title={`PRIVATE CHANNELS (${privateChannels.length})`}
-            isExpanded={isExpanded}
-            onToggle={() => setIsExpanded(!isExpanded)}
+            isExpanded={isPrivateExpanded}
+            onToggle={() => setIsPrivateExpanded(!isPrivateExpanded)}
           />
-          
-          {isExpanded && (
+
+          {isPrivateExpanded && (
             <div className="space-y-1">
               {privateChannels.map(channel => (
                 <ChannelListEntry

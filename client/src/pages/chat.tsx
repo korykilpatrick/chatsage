@@ -1,17 +1,18 @@
 import { useEffect } from "react";
 import { useSocket } from "@/hooks/use-socket";
 import { useUser } from "@/hooks/use-user";
-import ChannelList from "@/components/chat/channel-list";
+import { ChannelList } from "@/components/chat/channels";
 import MessageList from "@/components/chat/message-list";
 import MessageInput from "@/components/chat/message-input";
 import UserStatus from "@/components/chat/user-status";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import type { Channel } from "@/types/schema";
 
 export default function Chat() {
   const socket = useSocket();
   const { user, logout } = useUser();
-  const { data: channels } = useQuery({
+  const { data: channels = [] } = useQuery<Channel[]>({
     queryKey: ['/api/channels'],
     enabled: !!user
   });
@@ -36,7 +37,9 @@ export default function Chat() {
             Logout
           </Button>
         </div>
-        <ChannelList channels={channels || []} />
+        <div className="flex-1 p-4 overflow-auto">
+          <ChannelList channels={channels} />
+        </div>
       </div>
 
       {/* Main Chat Area */}

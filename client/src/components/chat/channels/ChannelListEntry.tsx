@@ -1,7 +1,6 @@
 import { FC } from "react";
-import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import type { Channel } from "@db/schema";
+import type { Channel } from "@/types/schema";
 import ChannelTitle from "./ChannelTitle";
 
 interface ChannelListEntryProps {
@@ -15,8 +14,6 @@ export const ChannelListEntry: FC<ChannelListEntryProps> = ({
   isActive,
   onClick
 }) => {
-  const [location] = useLocation();
-  
   return (
     <button
       onClick={onClick}
