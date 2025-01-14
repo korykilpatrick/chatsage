@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '@db';
-import { channels, workspaces, channelTypeEnum, type Channel, type InsertChannel } from '@db/schema';
+import { channels, workspaces, channelTypeEnum, type Channel, type InsertChannel, users, userChannels } from '@db/schema';
 import { and, eq, asc } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -236,6 +236,140 @@ router.delete('/channels/:channelId', async (req: Request, res: Response) => {
     return res.json({ message: 'Channel archived' });
   } catch (error) {
     console.error('Error archiving channel:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/channels/:channelId/members - Add member to channel
+router.post('/channels/:channelId/members', async (req: Request, res: Response) => {
+  try {
+    const channelId = parseInt(req.params.channelId);
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    const userId = parseInt(req.body.userId);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Check if channel exists
+    const [channel] = await db
+      .select()
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1);
+
+    if (!channel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Check if user exists
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if user is already a member
+    const [existingMembership] = await db
+      .select()
+      .from(userChannels)
+      .where(
+        and(
+          eq(userChannels.userId, userId),
+          eq(userChannels.channelId, channelId)
+        )
+      )
+      .limit(1);
+
+    if (existingMembership) {
+      return res.status(400).json({ error: 'User is already a member of this channel' });
+    }
+
+    // Add user to channel
+    await db.insert(userChannels).values({
+      userId,
+      channelId,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    return res.status(201).json({ message: 'Member added to channel' });
+  } catch (error) {
+    console.error('Error adding channel member:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/channels/:channelId/members - Remove member from channel
+router.delete('/channels/:channelId/members', async (req: Request, res: Response) => {
+  try {
+    const channelId = parseInt(req.params.channelId);
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    const userId = parseInt(req.query.userId as string);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Check if channel exists
+    const [channel] = await db
+      .select()
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1);
+
+    if (!channel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Check if user exists
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if user is a member
+    const [membership] = await db
+      .select()
+      .from(userChannels)
+      .where(
+        and(
+          eq(userChannels.userId, userId),
+          eq(userChannels.channelId, channelId)
+        )
+      )
+      .limit(1);
+
+    if (!membership) {
+      return res.status(400).json({ error: 'User is not a member of this channel' });
+    }
+
+    // Remove user from channel
+    await db
+      .delete(userChannels)
+      .where(
+        and(
+          eq(userChannels.userId, userId),
+          eq(userChannels.channelId, channelId)
+        )
+      );
+
+    return res.json({ message: 'Member removed from channel' });
+  } catch (error) {
+    console.error('Error removing channel member:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
