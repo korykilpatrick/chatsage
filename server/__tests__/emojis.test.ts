@@ -1,7 +1,8 @@
 import request from 'supertest';
 import express from 'express';
-import { db } from '@db';
-import { emojis } from '@db/schema';
+import { db } from '../../db';
+import { emojis } from '../../db/schema';
+import { eq } from 'drizzle-orm';
 import emojisRouter from '../routes/emojis';
 
 const app = express();

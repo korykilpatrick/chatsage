@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { db } from '@db';
-import { emojis, type Emoji } from '@db/schema';
+import { db } from '../../db';
+import { emojis } from '../../db/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
     const query = includeDeleted 
       ? db.select().from(emojis)
       : db.select().from(emojis).where(eq(emojis.deleted, false));
-    
+
     const emojiList = await query;
     res.json(emojiList);
   } catch (error) {
@@ -57,14 +57,14 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const newEmoji = await db.insert(emojis)
+    const [newEmoji] = await db.insert(emojis)
       .values({
         code: validation.data.code,
         deleted: false,
       })
       .returning();
 
-    res.status(201).json(newEmoji[0]);
+    res.status(201).json(newEmoji);
   } catch (error) {
     console.error('Error creating emoji:', error);
     res.status(500).json({ message: 'Failed to create emoji' });
