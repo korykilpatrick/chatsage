@@ -1,9 +1,17 @@
 import express, { type Express } from 'express';
-import { beforeAll, afterEach, beforeEach } from '@jest/globals';
-import { db } from '@db';
-import { messages, users, channels, workspaces } from '@db/schema';
-import { eq, and, ilike, gte, lte } from 'drizzle-orm';
-import searchRouter from '../routes/search';
+import { beforeAll, beforeEach } from '@jest/globals';
+import { db } from '../db';
+import { messages, users, channels, workspaces } from '../db/schema';
+import { eq } from 'drizzle-orm';
+import jwt from 'jsonwebtoken';
+import workspacesRouter from '../routes/workspaces';
+
+// Mock Vite-related modules
+jest.mock('../vite', () => ({
+  setupVite: jest.fn(),
+  serveStatic: jest.fn(),
+  log: jest.fn()
+}));
 
 // Set up the test Express application
 export async function setupTestApp(): Promise<Express> {
@@ -16,42 +24,56 @@ export async function setupTestApp(): Promise<Express> {
     next();
   });
 
-  // Mount the search routes with proper middleware
-  app.use('/api/search', searchRouter);
+  // Add auth middleware mock
+  app.use((req: any, _res, next) => {
+    if (req.headers.authorization) {
+      const token = req.headers.authorization.split(' ')[1];
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'test-secret');
+        req.user = decoded;
+      } catch (error) {
+        console.error('Auth error:', error);
+      }
+    }
+    next();
+  });
+
+  // Mount the workspaces router
+  app.use('/api/workspaces', workspacesRouter);
 
   return app;
 }
 
-// Mock Database Interface
-interface MockDB {
-  users: Map<string, any>;
-  verificationTokens: Map<string, string>;
-  refreshTokens: Set<string>;
-  _lastVerificationToken?: string;
-  clear: () => void;
-  getLastVerificationToken: () => string | undefined;
+// Helper function to create a test user
+export async function createTestUser(email = 'test@example.com') {
+  const [user] = await db.insert(users)
+    .values({
+      username: `test_${Date.now()}`,
+      email: email,
+      password: 'hashedpassword',
+      displayName: 'Test User',
+      emailVerified: true
+    })
+    .returning();
+  return user;
 }
 
-export function createMockDb(): MockDB {
-  const mockDb: MockDB = {
-    users: new Map(),
-    verificationTokens: new Map(),
-    refreshTokens: new Set(),
-    _lastVerificationToken: undefined,
+// Helper function to generate auth token for test user
+export async function loginTestUser(email: string) {
+  const user = await db.query.users.findFirst({
+    where: eq(users.email, email)
+  });
 
-    clear() {
-      this.users.clear();
-      this.verificationTokens.clear();
-      this.refreshTokens.clear();
-      this._lastVerificationToken = undefined;
-    },
+  if (!user) {
+    throw new Error('Test user not found');
+  }
 
-    getLastVerificationToken() {
-      return this._lastVerificationToken;
-    }
-  };
-
-  return mockDb;
+  // Generate JWT token
+  return jwt.sign(
+    { id: user.id, email: user.email },
+    process.env.JWT_SECRET || 'test-secret',
+    { expiresIn: '1h' }
+  );
 }
 
 let databaseAvailable = false;

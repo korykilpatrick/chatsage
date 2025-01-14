@@ -1,18 +1,26 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from '@jest/globals';
-import { db } from '@db/index';
-import { workspaces, users, userWorkspaces } from '@db/schema';
+import { db } from '../db';
+import { workspaces, users, userWorkspaces } from '../db/schema';
 import supertest from 'supertest';
-import { app } from '../index';
+import { setupTestApp } from './setup';
 import { createTestUser, loginTestUser } from './setup';
+import { eq } from 'drizzle-orm';
 
-const request = supertest(app);
+// Mock Vite-related modules
+jest.mock('../vite', () => ({
+  setupVite: jest.fn(),
+  serveStatic: jest.fn(),
+  log: jest.fn()
+}));
 
 describe('Workspace Routes', () => {
+  let app: any;
   let testUser: any;
   let authToken: string;
   let workspaceId: number;
 
   beforeAll(async () => {
+    app = await setupTestApp();
     testUser = await createTestUser();
     authToken = await loginTestUser(testUser.email);
   });
@@ -31,7 +39,7 @@ describe('Workspace Routes', () => {
 
   describe('POST /workspaces', () => {
     it('should create a new workspace', async () => {
-      const response = await request
+      const response = await supertest(app)
         .post('/api/workspaces')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
@@ -51,7 +59,7 @@ describe('Workspace Routes', () => {
 
   describe('GET /workspaces', () => {
     it('should list all workspaces', async () => {
-      const response = await request
+      const response = await supertest(app)
         .get('/api/workspaces')
         .set('Authorization', `Bearer ${authToken}`);
 
@@ -63,17 +71,17 @@ describe('Workspace Routes', () => {
   describe('GET /workspaces/:workspaceId', () => {
     it('should get workspace details', async () => {
       // First create a workspace
-      const createResponse = await request
+      const createResponse = await supertest(app)
         .post('/api/workspaces')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           name: 'Test Workspace',
           description: 'A test workspace'
         });
-      
+
       workspaceId = createResponse.body.id;
 
-      const response = await request
+      const response = await supertest(app)
         .get(`/api/workspaces/${workspaceId}`)
         .set('Authorization', `Bearer ${authToken}`);
 
@@ -83,7 +91,7 @@ describe('Workspace Routes', () => {
     });
 
     it('should return 404 for non-existent workspace', async () => {
-      const response = await request
+      const response = await supertest(app)
         .get('/api/workspaces/99999')
         .set('Authorization', `Bearer ${authToken}`);
 
@@ -95,17 +103,17 @@ describe('Workspace Routes', () => {
   describe('PUT /workspaces/:workspaceId', () => {
     it('should update workspace details', async () => {
       // First create a workspace
-      const createResponse = await request
+      const createResponse = await supertest(app)
         .post('/api/workspaces')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           name: 'Test Workspace',
           description: 'A test workspace'
         });
-      
+
       workspaceId = createResponse.body.id;
 
-      const response = await request
+      const response = await supertest(app)
         .put(`/api/workspaces/${workspaceId}`)
         .set('Authorization', `Bearer ${authToken}`)
         .send({
@@ -122,24 +130,24 @@ describe('Workspace Routes', () => {
   describe('DELETE /workspaces/:workspaceId', () => {
     it('should archive a workspace', async () => {
       // First create a workspace
-      const createResponse = await request
+      const createResponse = await supertest(app)
         .post('/api/workspaces')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           name: 'Test Workspace',
           description: 'A test workspace'
         });
-      
+
       workspaceId = createResponse.body.id;
 
-      const response = await request
+      const response = await supertest(app)
         .delete(`/api/workspaces/${workspaceId}`)
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(204);
 
       // Verify workspace is archived
-      const getResponse = await request
+      const getResponse = await supertest(app)
         .get(`/api/workspaces/${workspaceId}`)
         .set('Authorization', `Bearer ${authToken}`);
 
@@ -152,7 +160,7 @@ describe('Workspace Routes', () => {
       // Create another test user to add as member
       const newMember = await createTestUser('member@test.com');
 
-      const response = await request
+      const response = await supertest(app)
         .post(`/api/workspaces/${workspaceId}/members`)
         .set('Authorization', `Bearer ${authToken}`)
         .send({
@@ -167,7 +175,7 @@ describe('Workspace Routes', () => {
       const newMember = await createTestUser('member2@test.com');
 
       // First add the member
-      await request
+      await supertest(app)
         .post(`/api/workspaces/${workspaceId}/members`)
         .set('Authorization', `Bearer ${authToken}`)
         .send({
@@ -176,7 +184,7 @@ describe('Workspace Routes', () => {
         });
 
       // Then remove them
-      const response = await request
+      const response = await supertest(app)
         .delete(`/api/workspaces/${workspaceId}/members`)
         .set('Authorization', `Bearer ${authToken}`)
         .query({ userId: newMember.id });
