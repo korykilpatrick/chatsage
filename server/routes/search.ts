@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { db } from "@db";
 import { messages, users, channels } from "@db/schema";
-import { eq, and, ilike, gte, lte } from "drizzle-orm";
+import { eq, and, ilike, gte, lte, or, isNull } from "drizzle-orm";
 import express from "express";
+import { z } from 'zod';
 
 const router = Router();
 
@@ -15,9 +16,57 @@ router.use((_req, res, next) => {
   next();
 });
 
+// Input validation schemas
+const baseSearchSchema = z.object({
+  keyword: z.string().optional(),
+  workspaceId: z.preprocess(
+    (val) => (val ? parseInt(String(val)) : undefined),
+    z.number().int().optional()
+  ),
+  includeArchived: z.preprocess(
+    val => val === 'true' || val === true,
+    z.boolean().optional().default(false)
+  )
+});
+
+const advancedSearchSchema = baseSearchSchema.extend({
+  fromDate: z.preprocess(
+    (val) => (val ? new Date(String(val)) : undefined),
+    z.date().optional()
+  ).refine(val => !val || !isNaN(val.getTime()), {
+    message: 'Invalid fromDate format'
+  }),
+  toDate: z.preprocess(
+    (val) => (val ? new Date(String(val)) : undefined),
+    z.date().optional()
+  ).refine(val => !val || !isNaN(val.getTime()), {
+    message: 'Invalid toDate format'
+  }),
+  fromUser: z.string().optional(),
+  channelId: z.preprocess(
+    (val) => (val ? parseInt(String(val)) : undefined),
+    z.number().int().optional()
+  )
+});
+
 router.get('/', async (req, res) => {
   try {
-    const { keyword, workspaceId } = req.query;
+    // Validate input
+    const result = baseSearchSchema.safeParse(req.query);
+    if (!result.success) {
+      // Check for specific validation errors
+      const error = result.error.errors[0];
+      if (error.code === 'invalid_type' && error.path[0] === 'workspaceId') {
+        return res.status(400).json({ error: 'Invalid workspace ID' });
+      }
+
+      return res.status(400).json({
+        error: 'INVALID_INPUT',
+        details: result.error.errors.map(e => e.message)
+      });
+    }
+
+    const { keyword, workspaceId, includeArchived } = result.data;
 
     // Base query for messages
     let query = db.select({
@@ -37,11 +86,15 @@ router.get('/', async (req, res) => {
     }
 
     if (workspaceId) {
-      const wsId = parseInt(workspaceId as string);
-      if (isNaN(wsId)) {
-        return res.status(400).json({ error: 'Invalid workspace ID' });
-      }
-      conditions.push(eq(messages.workspaceId, wsId));
+      conditions.push(eq(messages.workspaceId, workspaceId));
+    }
+
+    // Handle archived channels unless explicitly included
+    if (!includeArchived) {
+      conditions.push(or(
+        isNull(channels.archived),
+        eq(channels.archived, false)
+      ));
     }
 
     if (conditions.length > 0) {
@@ -49,7 +102,7 @@ router.get('/', async (req, res) => {
     }
 
     // Execute query
-    const results = await query.execute();
+    const results = await query;
 
     // Format results
     const formattedResults = results.map(result => ({
@@ -65,6 +118,7 @@ router.get('/', async (req, res) => {
         id: result.channel.id,
         name: result.channel.name,
         workspaceId: result.channel.workspaceId,
+        archived: result.channel.archived
       } : null,
       workspaceId: result.messages.workspaceId,
     }));
@@ -72,14 +126,38 @@ router.get('/', async (req, res) => {
     res.json({ messages: formattedResults });
   } catch (error) {
     console.error('Search error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
-// Add advanced search route
+// Add advanced search route with more filtering options
 router.get('/advanced', async (req, res) => {
   try {
-    const { keyword, workspaceId, fromDate, toDate, fromUser } = req.query;
+    // Validate input
+    const result = advancedSearchSchema.safeParse(req.query);
+    if (!result.success) {
+      // Check for specific validation errors
+      for (const error of result.error.errors) {
+        if (error.message === 'Invalid fromDate format' || error.message === 'Invalid toDate format') {
+          return res.status(400).json({ error: 'Invalid fromDate format' });
+        }
+      }
+
+      return res.status(400).json({
+        error: 'INVALID_INPUT',
+        details: result.error.errors.map(e => e.message)
+      });
+    }
+
+    const { 
+      keyword, 
+      workspaceId, 
+      fromDate, 
+      toDate, 
+      fromUser,
+      channelId,
+      includeArchived 
+    } = result.data;
 
     let query = db.select({
       messages: messages,
@@ -97,50 +175,44 @@ router.get('/advanced', async (req, res) => {
     }
 
     if (workspaceId) {
-      const wsId = parseInt(workspaceId as string);
-      if (isNaN(wsId)) {
-        return res.status(400).json({ error: 'Invalid workspace ID' });
-      }
-      conditions.push(eq(messages.workspaceId, wsId));
+      conditions.push(eq(messages.workspaceId, workspaceId));
     }
 
-    // Handle date range search
+    if (channelId) {
+      conditions.push(eq(messages.channelId, channelId));
+    }
+
+    // Handle date range search with timezone consideration
     if (fromDate) {
-      try {
-        const date = new Date(fromDate as string);
-        if (isNaN(date.getTime())) {
-          return res.status(400).json({ error: 'Invalid fromDate format' });
-        }
-        date.setHours(0, 0, 0, 0);  // Start of the day
-        conditions.push(gte(messages.createdAt, date));
-      } catch (error) {
-        return res.status(400).json({ error: 'Invalid fromDate format' });
-      }
+      const startDate = new Date(fromDate);
+      startDate.setHours(0, 0, 0, 0);
+      conditions.push(gte(messages.createdAt, startDate));
     }
 
     if (toDate) {
-      try {
-        const date = new Date(toDate as string);
-        if (isNaN(date.getTime())) {
-          return res.status(400).json({ error: 'Invalid toDate format' });
-        }
-        date.setHours(23, 59, 59, 999);  // End of the day
-        conditions.push(lte(messages.createdAt, date));
-      } catch (error) {
-        return res.status(400).json({ error: 'Invalid toDate format' });
-      }
+      const endDate = new Date(toDate);
+      endDate.setHours(23, 59, 59, 999);
+      conditions.push(lte(messages.createdAt, endDate));
     }
 
     // Handle user search
     if (fromUser) {
-      conditions.push(eq(users.username, fromUser as string));
+      conditions.push(eq(users.username, fromUser));
+    }
+
+    // Handle archived channels unless explicitly included
+    if (!includeArchived) {
+      conditions.push(or(
+        isNull(channels.archived),
+        eq(channels.archived, false)
+      ));
     }
 
     if (conditions.length > 0) {
       query = query.where(and(...conditions));
     }
 
-    const results = await query.execute();
+    const results = await query;
 
     const formattedResults = results.map(result => ({
       id: result.messages.id,
@@ -155,6 +227,7 @@ router.get('/advanced', async (req, res) => {
         id: result.channel.id,
         name: result.channel.name,
         workspaceId: result.channel.workspaceId,
+        archived: result.channel.archived
       } : null,
       workspaceId: result.messages.workspaceId,
     }));
@@ -162,7 +235,7 @@ router.get('/advanced', async (req, res) => {
     res.json({ messages: formattedResults });
   } catch (error) {
     console.error('Advanced search error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

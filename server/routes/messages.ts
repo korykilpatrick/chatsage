@@ -87,8 +87,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     // Build conditions array
     const conditions = [
-      eq(messages.channelId, channelId),
-      eq(messages.parentMessageId, null) // Only get top-level messages, not thread replies
+      eq(messages.channelId, channelId)
     ];
 
     if (!includeDeleted) {
