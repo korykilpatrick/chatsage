@@ -1,21 +1,23 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '@db';
 import { messages, channels } from '@db/schema';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, lt } from 'drizzle-orm';
 
 const router = Router();
 
-// GET /api/channels/:channelId/messages - Get messages for a channel
-router.get('/:channelId/messages', async (req, res) => {
+// Authentication middleware
+const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user) {
-    res.setHeader('Content-Type', 'application/json');
     return res.status(401).json({ error: 'Not authenticated' });
   }
+  next();
+};
 
+// GET /api/channels/:channelId/messages - Get messages for a channel
+router.get('/:channelId/messages', requireAuth, async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.channelId);
     if (isNaN(channelId)) {
-      res.setHeader('Content-Type', 'application/json');
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
 
@@ -27,7 +29,6 @@ router.get('/:channelId/messages', async (req, res) => {
       .limit(1);
 
     if (!channel) {
-      res.setHeader('Content-Type', 'application/json');
       return res.status(404).json({ error: 'Channel not found' });
     }
 
@@ -37,50 +38,38 @@ router.get('/:channelId/messages', async (req, res) => {
     const before = req.query.before ? new Date(req.query.before as string) : undefined;
     const includeDeleted = req.query.includeDeleted === 'true';
 
-    // Build query
-    let query = db
-      .select()
-      .from(messages)
-      .where(eq(messages.channelId, channelId));
+    // Build conditions array
+    const conditions = [eq(messages.channelId, channelId)];
 
     if (!includeDeleted) {
-      query = query.where(eq(messages.deleted, false));
+      conditions.push(eq(messages.deleted, false));
     }
 
     if (before) {
-      query = query.where(and(
-        eq(messages.channelId, channelId),
-        eq(messages.createdAt < before)
-      ));
+      conditions.push(lt(messages.createdAt, before));
     }
 
-    query = query
+    // Execute query with all conditions
+    const messagesList = await db
+      .select()
+      .from(messages)
+      .where(and(...conditions))
       .orderBy(desc(messages.createdAt))
       .limit(limit)
       .offset(offset);
 
-    const messagesList = await query;
-
-    res.setHeader('Content-Type', 'application/json');
-    res.json(messagesList);
+    return res.json(messagesList);
   } catch (error) {
     console.error('Error fetching messages:', error);
-    res.setHeader('Content-Type', 'application/json');
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // POST /api/channels/:channelId/messages - Create a new message
-router.post('/:channelId/messages', async (req, res) => {
-  if (!req.user) {
-    res.setHeader('Content-Type', 'application/json');
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
+router.post('/:channelId/messages', requireAuth, async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.channelId);
     if (isNaN(channelId)) {
-      res.setHeader('Content-Type', 'application/json');
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
 
@@ -92,13 +81,11 @@ router.post('/:channelId/messages', async (req, res) => {
       .limit(1);
 
     if (!channel) {
-      res.setHeader('Content-Type', 'application/json');
       return res.status(404).json({ error: 'Channel not found' });
     }
 
     const { content } = req.body;
     if (!content || content.trim().length === 0) {
-      res.setHeader('Content-Type', 'application/json');
       return res.status(400).json({ error: 'Message content cannot be empty' });
     }
 
@@ -106,19 +93,17 @@ router.post('/:channelId/messages', async (req, res) => {
     const [newMessage] = await db
       .insert(messages)
       .values({
-        content,
+        content: content.trim(),
         channelId,
         userId: req.user.id,
         deleted: false
       })
       .returning();
 
-    res.setHeader('Content-Type', 'application/json');
-    res.status(201).json(newMessage);
+    return res.status(201).json(newMessage);
   } catch (error) {
     console.error('Error creating message:', error);
-    res.setHeader('Content-Type', 'application/json');
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

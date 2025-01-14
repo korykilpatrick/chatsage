@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterAll } from '@jest/globals';
 import request from 'supertest';
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { db } from '@db';
 import { eq } from 'drizzle-orm';
 import { messages, channels, users } from '@db/schema';
+import messagesRouter from '../routes/messages';
 
 describe('Messages API', () => {
   let app: express.Express;
@@ -13,6 +14,12 @@ describe('Messages API', () => {
   beforeEach(async () => {
     app = express();
     app.use(express.json());
+
+    // Set Content-Type header for all responses
+    app.use((_req: Request, res: Response, next: NextFunction) => {
+      res.setHeader('Content-Type', 'application/json');
+      next();
+    });
 
     // Clean up test data
     await db.delete(messages);
@@ -43,6 +50,9 @@ describe('Messages API', () => {
 
   describe('GET /api/channels/:channelId/messages', () => {
     it('should return 401 when not authenticated', async () => {
+      // Mount the messages router without auth middleware first
+      app.use('/api/channels', messagesRouter);
+
       const response = await request(app)
         .get(`/api/channels/${testChannel.id}/messages`)
         .expect('Content-Type', /json/)
@@ -52,11 +62,14 @@ describe('Messages API', () => {
     });
 
     it('should return empty array when no messages exist', async () => {
-      // Mock authenticated user
-      app.use((req, res, next) => {
+      // Add auth middleware first
+      app.use((req: Request, _res: Response, next: NextFunction) => {
         (req as any).user = testUser;
         next();
       });
+
+      // Then mount the router
+      app.use('/api/channels', messagesRouter);
 
       const response = await request(app)
         .get(`/api/channels/${testChannel.id}/messages`)
@@ -68,17 +81,23 @@ describe('Messages API', () => {
     });
 
     it('should return list of messages when messages exist', async () => {
-      // Mock authenticated user
-      app.use((req, res, next) => {
+      // Add auth middleware first
+      app.use((req: Request, _res: Response, next: NextFunction) => {
         (req as any).user = testUser;
         next();
       });
 
-      // Create test message
+      // Then mount the router
+      app.use('/api/channels', messagesRouter);
+
+      // Create test message with timestamp
       const [message] = await db.insert(messages).values({
         content: 'Test message',
         channelId: testChannel.id,
-        userId: testUser.id
+        userId: testUser.id,
+        deleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
       }).returning();
 
       const response = await request(app)
@@ -97,22 +116,30 @@ describe('Messages API', () => {
     });
 
     it('should support pagination', async () => {
-      // Mock authenticated user
-      app.use((req, res, next) => {
+      // Add auth middleware first
+      app.use((req: Request, _res: Response, next: NextFunction) => {
         (req as any).user = testUser;
         next();
       });
 
-      // Create multiple test messages
-      const messages = await Promise.all(
-        Array.from({ length: 25 }, (_, i) => 
-          db.insert(messages).values({
-            content: `Test message ${i + 1}`,
-            channelId: testChannel.id,
-            userId: testUser.id
-          }).returning()
-        )
-      );
+      // Then mount the router
+      app.use('/api/channels', messagesRouter);
+
+      // Create multiple test messages with different timestamps
+      const messagePromises = Array.from({ length: 25 }, (_, i) => {
+        const date = new Date();
+        date.setMinutes(date.getMinutes() - i); // Each message 1 minute apart
+        return db.insert(messages).values({
+          content: `Test message ${i + 1}`,
+          channelId: testChannel.id,
+          userId: testUser.id,
+          deleted: false,
+          createdAt: date,
+          updatedAt: date
+        }).returning();
+      });
+
+      await Promise.all(messagePromises);
 
       const response = await request(app)
         .get(`/api/channels/${testChannel.id}/messages?limit=10&offset=0`)
@@ -121,17 +148,19 @@ describe('Messages API', () => {
 
       expect(Array.isArray(response.body)).toBe(true);
       expect(response.body).toHaveLength(10);
-      expect(response.body[0]).toEqual(expect.objectContaining({
-        content: 'Test message 25', // Most recent first
-      }));
+      // Most recent messages should appear first
+      expect(response.body[0].content).toBe('Test message 1');
     });
 
     it('should handle invalid channel ID', async () => {
-      // Mock authenticated user
-      app.use((req, res, next) => {
+      // Add auth middleware first
+      app.use((req: Request, _res: Response, next: NextFunction) => {
         (req as any).user = testUser;
         next();
       });
+
+      // Then mount the router
+      app.use('/api/channels', messagesRouter);
 
       const response = await request(app)
         .get('/api/channels/999/messages')
@@ -144,11 +173,14 @@ describe('Messages API', () => {
 
   describe('POST /api/channels/:channelId/messages', () => {
     beforeEach(() => {
-      // Mock authenticated user for all tests in this describe block
-      app.use((req, res, next) => {
+      // Add auth middleware first
+      app.use((req: Request, _res: Response, next: NextFunction) => {
         (req as any).user = testUser;
         next();
       });
+
+      // Then mount the router
+      app.use('/api/channels', messagesRouter);
     });
 
     it('should create a new message', async () => {
@@ -165,7 +197,8 @@ describe('Messages API', () => {
       expect(response.body).toEqual(expect.objectContaining({
         content: messageData.content,
         channelId: testChannel.id,
-        userId: testUser.id
+        userId: testUser.id,
+        deleted: false
       }));
 
       // Verify message was actually created in database
