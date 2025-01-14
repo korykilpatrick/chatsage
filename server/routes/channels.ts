@@ -10,7 +10,13 @@ const router = Router();
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user) {
     res.setHeader('Content-Type', 'application/json');
-    return res.status(401).json({ error: 'Not authenticated' });
+    return res.status(401).json({ 
+      error: 'Not authenticated',
+      details: {
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required'
+      }
+    });
   }
   next();
 };
@@ -21,6 +27,7 @@ const channelSchema = z.object({
     .max(100, 'Channel name too long')
     .regex(/^[a-z0-9-]+$/, 'Channel name can only contain lowercase letters, numbers, and hyphens'),
   type: z.enum(channelTypeEnum.enumValues).default('PUBLIC'),
+  topic: z.string().optional().nullable(),
 });
 
 // Helper to set JSON content type
@@ -78,7 +85,13 @@ router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Respo
   try {
     const workspaceId = parseInt(req.params.workspaceId);
     if (isNaN(workspaceId)) {
-      return res.status(400).json({ error: 'Invalid workspace ID' });
+      return res.status(400).json({ 
+        error: 'Invalid workspace ID',
+        details: {
+          code: 'INVALID_WORKSPACE_ID',
+          message: 'Workspace ID must be a valid number'
+        }
+      });
     }
 
     // Check if workspace exists
@@ -89,15 +102,27 @@ router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Respo
       .limit(1);
 
     if (!workspace) {
-      return res.status(404).json({ error: 'Workspace not found' });
+      return res.status(404).json({ 
+        error: 'Workspace not found',
+        details: {
+          code: 'WORKSPACE_NOT_FOUND',
+          message: 'The specified workspace does not exist'
+        }
+      });
     }
 
     const result = channelSchema.safeParse(req.body);
     if (!result.success) {
-      return res.status(400).json({ error: result.error.errors[0].message });
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        details: {
+          code: 'VALIDATION_ERROR',
+          message: result.error.errors[0].message
+        }
+      });
     }
 
-    const { name, type } = result.data;
+    const { name, type, topic } = result.data;
 
     // Check if channel name already exists in workspace
     const [existingChannel] = await db
@@ -112,7 +137,13 @@ router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Respo
       .limit(1);
 
     if (existingChannel) {
-      return res.status(400).json({ error: 'Channel name already exists in this workspace' });
+      return res.status(400).json({ 
+        error: 'Channel exists',
+        details: {
+          code: 'CHANNEL_EXISTS',
+          message: 'Channel name already exists in this workspace'
+        }
+      });
     }
 
     // Create new channel
@@ -122,6 +153,7 @@ router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Respo
         name: name.trim(),
         workspaceId,
         type,
+        topic,
         archived: false,
         createdBy: req.user!.id,
         createdAt: new Date(),
@@ -132,7 +164,13 @@ router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Respo
     return res.status(201).json(newChannel);
   } catch (error) {
     console.error('Error creating channel:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      details: {
+        code: 'SERVER_ERROR',
+        message: 'Failed to create channel'
+      }
+    });
   }
 });
 

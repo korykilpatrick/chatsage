@@ -25,7 +25,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 const createChannelSchema = z.object({
-  name: z.string().min(1, "Channel name is required").transform(name => name.toLowerCase().replace(/\s+/g, '-')),
+  name: z.string().min(1, "Channel name is required")
+    .max(100, "Channel name too long")
+    .regex(/^[a-z0-9-]+$/, "Channel name can only contain lowercase letters, numbers, and hyphens"),
   isPrivate: z.boolean().default(false),
   topic: z.string().optional(),
 });
@@ -51,22 +53,22 @@ export const CreateChannelButton: FC<CreateChannelButtonProps> = ({ className })
 
   const createChannel = useMutation({
     mutationFn: async (data: CreateChannelForm) => {
-      const response = await fetch("/api/channels", {
+      const workspaceId = 1; // Default workspace ID
+      const response = await fetch(`/api/workspaces/${workspaceId}/channels`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: data.name,
+          name: data.name.toLowerCase(),
           type: data.isPrivate ? "PRIVATE" : "PUBLIC",
           topic: data.topic || null,
-          workspaceId: 1, // Default workspace ID
         }),
         credentials: 'include'
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Channel creation failed:', errorText);
-        throw new Error(errorText || 'Failed to create channel');
+        const errorData = await response.json();
+        console.error('Channel creation failed:', errorData);
+        throw new Error(errorData.details?.message || 'Failed to create channel');
       }
 
       return response.json();
