@@ -8,14 +8,11 @@ const config: Config.InitialOptions = {
     '^@/(.*)$': '<rootDir>/client/src/$1',
     '^@db/(.*)$': '<rootDir>/db/$1',
     '^@db$': '<rootDir>/db/index.ts',
-    '^@/vite$': '<rootDir>/server/__mocks__/vite.ts',
-    '^./vite$': '<rootDir>/server/__mocks__/vite.ts',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$':
       '<rootDir>/client/src/__mocks__/fileMock.js',
   },
   setupFilesAfterEnv: [
-    '<rootDir>/server/__tests__/setup.ts',
     '<rootDir>/client/src/__tests__/setup.ts'
   ],
   testTimeout: 10000,
@@ -23,7 +20,6 @@ const config: Config.InitialOptions = {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: './tsconfig.json',
       useESM: true,
-      isolatedModules: true
     }]
   },
   extensionsToTreatAsEsm: ['.ts', '.tsx'],

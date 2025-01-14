@@ -2,14 +2,11 @@ import { render, screen } from '@testing-library/react';
 import App from '../App';
 
 describe('App Component', () => {
-  it('renders without crashing', () => {
+  it('renders without crashing and shows loading state', () => {
     render(<App />);
-    // Basic smoke test to ensure the app renders
-    expect(document.querySelector('#root')).toBeTruthy();
-  });
-
-  it('shows loading state initially', () => {
-    render(<App />);
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    // Loading state should be visible initially (Loader2 component)
+    const loadingSpinner = screen.getByRole('status');
+    expect(loadingSpinner).toBeInTheDocument();
+    expect(loadingSpinner).toHaveClass('animate-spin');
   });
 });

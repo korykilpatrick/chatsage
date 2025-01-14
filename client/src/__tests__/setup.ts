@@ -1,7 +1,18 @@
 import '@testing-library/jest-dom';
-import { beforeAll, afterAll, afterEach } from 'jest';
+import { beforeAll, afterAll, afterEach } from '@jest/globals';
 import { setupServer } from 'msw/node';
-import { handlers } from './handlers';
+import { http } from 'msw';
+
+// Define handlers
+const handlers = [
+  http.get('/api/user', () => {
+    return Response.json({
+      id: 1,
+      name: 'Test User',
+      email: 'test@example.com'
+    });
+  })
+];
 
 // Setup MSW Server
 const server = setupServer(...handlers);
