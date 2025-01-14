@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, within } from '@testing-library/react';
 import MessageList from './message-list';
 import { useSocket } from '@/hooks/use-socket';
 import { useQuery } from '@tanstack/react-query';
@@ -40,6 +40,7 @@ describe('MessageList', () => {
   const mockRefetch = vi.fn();
 
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(useSocket).mockReturnValue(mockSocket);
     vi.mocked(useQuery).mockReturnValue({
       data: mockMessages,
@@ -47,7 +48,6 @@ describe('MessageList', () => {
       isLoading: false,
       error: null
     } as any);
-    vi.clearAllMocks();
   });
 
   it('renders messages correctly', () => {
@@ -58,15 +58,16 @@ describe('MessageList', () => {
     expect(screen.getByText('How are you?')).toBeInTheDocument();
 
     // Check if user names are displayed
-    expect(screen.getByText(/user 1/i)).toBeInTheDocument();
-    expect(screen.getByText(/user 2/i)).toBeInTheDocument();
+    expect(screen.getByText('User 1')).toBeInTheDocument();
+    expect(screen.getByText('User 2')).toBeInTheDocument();
 
-    // Check avatar images
-    const avatarImages = screen.getAllByRole('img');
-    expect(avatarImages).toHaveLength(2);
-    avatarImages.forEach((img, index) => {
-      expect(img).toHaveAttribute('alt', `User ${index + 1}'s avatar`);
-      expect(img).toHaveAttribute('src', `https://avatar.vercel.sh/${index + 1}`);
+    // Check for avatar components
+    const messageItems = screen.getAllByRole('listitem');
+    expect(messageItems).toHaveLength(2);
+    messageItems.forEach((item, index) => {
+      const avatarImage = within(item).getByRole('img', { name: `User ${index + 1}'s avatar` });
+      expect(avatarImage).toHaveAttribute('alt', `User ${index + 1}'s avatar`);
+      expect(avatarImage).toHaveAttribute('src', `https://avatar.vercel.sh/${index + 1}`);
     });
   });
 
@@ -101,9 +102,9 @@ describe('MessageList', () => {
     } as any);
 
     render(<MessageList />);
-    const messageContainer = screen.getByLabelText('Message container');
+    const messageContainer = screen.getByRole('region', { name: /message list/i });
     expect(messageContainer).toBeInTheDocument();
-    expect(messageContainer.children).toHaveLength(0);
+    expect(within(messageContainer).queryByRole('listitem')).not.toBeInTheDocument();
   });
 
   it('handles loading state', () => {

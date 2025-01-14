@@ -36,7 +36,7 @@ export default function MessageList() {
       ) : (
         <div className="space-y-4" aria-label="Message container">
           {messages.map((message) => (
-            <div key={message.id} className="flex items-start gap-3">
+            <div key={message.id} className="flex items-start gap-3" role="listitem">
               <Avatar>
                 <AvatarImage 
                   src={`https://avatar.vercel.sh/${message.userId}`} 

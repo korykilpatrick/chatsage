@@ -1,8 +1,10 @@
 import '@testing-library/jest-dom';
-import { beforeAll, afterAll, afterEach } from 'vitest';
+import { beforeAll, afterAll, afterEach, beforeEach, vi } from 'vitest';
 import { setupServer } from 'msw/node';
 import { HttpResponse, http } from 'msw';
 import type { RequestHandler } from 'msw';
+import { QueryClient } from '@tanstack/react-query';
+import { cleanup } from '@testing-library/react';
 
 // Create MSW server instance
 export const server = setupServer(
@@ -32,11 +34,23 @@ export const server = setupServer(
   })
 );
 
+// React Query setup
+export const createQueryClient = () => new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+    },
+  },
+});
+
 // Start MSW Server before tests
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 
-// Reset handlers after each test
-afterEach(() => server.resetHandlers());
+// Reset handlers and cleanup after each test
+afterEach(() => {
+  server.resetHandlers();
+  cleanup();
+});
 
 // Clean up after all tests are done
 afterAll(() => server.close());
@@ -71,7 +85,7 @@ export const createMockMessage = (overrides = {}) => ({
   channelId: 1,
   createdAt: new Date(),
   updatedAt: new Date(),
-  archived: false,
+  deleted: false,
   ...overrides
 });
 
@@ -82,4 +96,11 @@ export const createMockUser = (overrides = {}) => ({
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides
+});
+
+// Mock socket utilities
+export const createMockSocket = () => ({
+  on: vi.fn(),
+  off: vi.fn(),
+  emit: vi.fn()
 });
