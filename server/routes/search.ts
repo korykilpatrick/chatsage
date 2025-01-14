@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { db } from "@db";
 import { messages, users, channels } from "@db/schema";
-import { eq, and, ilike, gte, lte, or, isNull } from "drizzle-orm";
+import { eq, and, ilike, gte, lte, or, isNull, sql } from "drizzle-orm";
+import { type SQL } from 'drizzle-orm';
 import express from "express";
 import { z } from 'zod';
 
@@ -61,12 +62,18 @@ const advancedSearchSchema = baseSearchSchema.extend({
   )
 });
 
+// Helper function to create archived condition
+const getArchivedCondition = (): SQL => {
+  return or(
+    isNull(channels.archived),
+    eq(channels.archived, false)
+  );
+};
+
 router.get('/', async (req, res) => {
   try {
-    // Validate input
     const result = baseSearchSchema.safeParse(req.query);
     if (!result.success) {
-      // Check for specific validation errors
       const error = result.error.errors[0];
       if (error.code === 'invalid_type' && error.path[0] === 'workspaceId') {
         return res.status(400).json({ error: 'Invalid workspace ID' });
@@ -80,18 +87,8 @@ router.get('/', async (req, res) => {
 
     const { keyword, workspaceId, includeArchived } = result.data;
 
-    // Base query for messages
-    let query = db.select({
-      messages: messages,
-      user: users,
-      channel: channels,
-    })
-    .from(messages)
-    .leftJoin(users, eq(messages.userId, users.id))
-    .leftJoin(channels, eq(messages.channelId, channels.id));
-
-    // Add conditions based on parameters
-    const conditions = [];
+    // Build conditions array first
+    const conditions: SQL[] = [];
 
     if (keyword) {
       conditions.push(ilike(messages.content, `%${keyword}%`));
@@ -103,18 +100,21 @@ router.get('/', async (req, res) => {
 
     // Handle archived channels unless explicitly included
     if (!includeArchived) {
-      conditions.push(or(
-        isNull(channels.archived),
-        eq(channels.archived, false)
-      ));
+      conditions.push(getArchivedCondition());
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-
-    // Execute query
-    const results = await query;
+    // Execute query with all conditions combined
+    const results = await db
+      .select({
+        messages: messages,
+        user: users,
+        channel: channels,
+      })
+      .from(messages)
+      .leftJoin(users, eq(messages.userId, users.id))
+      .leftJoin(channels, eq(messages.channelId, channels.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .execute();
 
     // Format results
     const formattedResults = results.map(result => ({
@@ -142,13 +142,10 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Add advanced search route with more filtering options
 router.get('/advanced', async (req, res) => {
   try {
-    // Validate input
     const result = advancedSearchSchema.safeParse(req.query);
     if (!result.success) {
-      // Look for custom error messages first
       const customError = result.error.errors.find(e => 
         e.message === 'Invalid fromDate format' || e.message === 'Invalid toDate format'
       );
@@ -173,16 +170,8 @@ router.get('/advanced', async (req, res) => {
       includeArchived 
     } = result.data;
 
-    let query = db.select({
-      messages: messages,
-      user: users,
-      channel: channels,
-    })
-    .from(messages)
-    .leftJoin(users, eq(messages.userId, users.id))
-    .leftJoin(channels, eq(messages.channelId, channels.id));
-
-    const conditions = [];
+    // Build conditions array first
+    const conditions: SQL[] = [];
 
     if (keyword) {
       conditions.push(ilike(messages.content, `%${keyword}%`));
@@ -196,7 +185,6 @@ router.get('/advanced', async (req, res) => {
       conditions.push(eq(messages.channelId, channelId));
     }
 
-    // Handle date range search with timezone consideration
     if (fromDate) {
       const startDate = new Date(fromDate);
       startDate.setHours(0, 0, 0, 0);
@@ -209,24 +197,27 @@ router.get('/advanced', async (req, res) => {
       conditions.push(lte(messages.createdAt, endDate));
     }
 
-    // Handle user search
     if (fromUser) {
       conditions.push(eq(users.username, fromUser));
     }
 
     // Handle archived channels unless explicitly included
     if (!includeArchived) {
-      conditions.push(or(
-        isNull(channels.archived),
-        eq(channels.archived, false)
-      ));
+      conditions.push(getArchivedCondition());
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-
-    const results = await query;
+    // Execute query with all conditions combined
+    const results = await db
+      .select({
+        messages: messages,
+        user: users,
+        channel: channels,
+      })
+      .from(messages)
+      .leftJoin(users, eq(messages.userId, users.id))
+      .leftJoin(channels, eq(messages.channelId, channels.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .execute();
 
     const formattedResults = results.map(result => ({
       id: result.messages.id,

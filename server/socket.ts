@@ -22,9 +22,10 @@ export function setupWebSocket(server: Server) {
 
     socket.on("presence_update", async (data: { userId: number; presence: string }) => {
       await db.update(users)
-        .set({ presence: data.presence as any, lastSeen: new Date() })
-        .where(eq(users.id, data.userId));
-      
+        .set({ lastKnownPresence: data.presence, lastSeen: new Date() })
+        .where(eq(users.id, data.userId))
+        .execute();
+
       io.emit("presence_changed", data);
     });
 
