@@ -1,16 +1,8 @@
 import { Server } from "http";
 import { Server as SocketServer } from "socket.io";
 import { db } from "@db";
-import { messages, users, type User } from "@db/schema";
+import { messages, users } from "@db/schema";
 import { eq } from "drizzle-orm";
-
-// Define the presence type based on our schema
-type UserPresence = User['lastKnownPresence'];
-
-interface PresenceUpdateData {
-  userId: number;
-  presence: UserPresence;
-}
 
 export function setupWebSocket(server: Server) {
   const io = new SocketServer(server, {
@@ -28,15 +20,11 @@ export function setupWebSocket(server: Server) {
       socket.leave(`channel:${channelId}`);
     });
 
-    socket.on("presence_update", async (data: PresenceUpdateData) => {
+    socket.on("presence_update", async (data: { userId: number; presence: string }) => {
       await db.update(users)
-        .set({ 
-          lastKnownPresence: data.presence,
-          updatedAt: new Date()
-        })
-        .where(eq(users.id, data.userId))
-        .execute();
-
+        .set({ presence: data.presence as any, lastSeen: new Date() })
+        .where(eq(users.id, data.userId));
+      
       io.emit("presence_changed", data);
     });
 
