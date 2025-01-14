@@ -7,11 +7,12 @@ import MessageInput from "@/components/chat/message-input";
 import UserStatus from "@/components/chat/user-status";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Channel } from "@/types";
 
 export default function Chat() {
   const socket = useSocket();
   const { user, logout } = useUser();
-  const { data: channels } = useQuery({
+  const { data: channels } = useQuery<Channel[]>({
     queryKey: ['/api/channels'],
     enabled: !!user
   });

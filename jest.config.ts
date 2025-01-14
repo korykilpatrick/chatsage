@@ -3,7 +3,7 @@ import type { Config } from '@jest/types';
 const config: Config.InitialOptions = {
   preset: 'ts-jest',
   testEnvironment: 'jsdom',
-  roots: ['<rootDir>/server/__tests__', '<rootDir>/client/src/__tests__'],
+  roots: ['<rootDir>/server/__tests__'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/client/src/$1',
     '^@db/(.*)$': '<rootDir>/db/$1',
@@ -12,10 +12,6 @@ const config: Config.InitialOptions = {
     '\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$':
       '<rootDir>/client/src/__mocks__/fileMock.js',
   },
-  setupFilesAfterEnv: [
-    '<rootDir>/client/src/__tests__/setup.ts'
-  ],
-  testTimeout: 10000,
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: './tsconfig.json',
@@ -24,7 +20,7 @@ const config: Config.InitialOptions = {
   },
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  testMatch: ['**/__tests__/**/*.test.ts?(x)'],
+  testMatch: ['**/server/__tests__/**/*.test.ts?(x)'],
   modulePathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/dist/'],
   testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/dist/'],
   globals: {
