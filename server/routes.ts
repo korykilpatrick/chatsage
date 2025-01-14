@@ -8,6 +8,7 @@ import channelsRouter from './routes/channels';
 import pinsRouter from './routes/pins';
 import reactionsRouter from './routes/reactions';
 import searchRouter from './routes/search';
+import emojisRouter from './routes/emojis';
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -25,6 +26,7 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/channels/:channelId/pins', pinsRouter);
   app.use('/api/channels', channelsRouter);  // Global channel routes after specific ones
   app.use('/api/users', usersRouter);
+  app.use('/api/emojis', emojisRouter);  // Add emoji routes
 
   return httpServer;
 }
