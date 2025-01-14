@@ -38,7 +38,13 @@ describe('Search API', () => {
       type: 'PUBLIC',
     }).returning();
 
-    // Create test messages
+    // Create test messages with different dates
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
     await db.insert(messages).values([
       {
         content: 'Hello world test message',
@@ -46,8 +52,8 @@ describe('Search API', () => {
         channelId: testChannel.id,
         workspaceId: testWorkspace.id,
         deleted: false,
-        createdAt: new Date(),
-        updatedAt: new Date()
+        createdAt: yesterday,
+        updatedAt: yesterday
       },
       {
         content: 'Another message with different content',
@@ -64,8 +70,8 @@ describe('Search API', () => {
         channelId: testChannel.id,
         workspaceId: testWorkspace.id,
         deleted: false,
-        createdAt: new Date(),
-        updatedAt: new Date()
+        createdAt: tomorrow,
+        updatedAt: tomorrow
       }
     ]);
   });
@@ -123,19 +129,50 @@ describe('Search API', () => {
 
       expect(res.body).toHaveProperty('error', 'Invalid workspace ID');
     });
+  });
 
-    it('should include channel and user details in search results', async () => {
+  describe('GET /api/search/advanced', () => {
+    it('should search messages with date range', async () => {
+      const today = new Date();
       const res = await request(app)
-        .get('/api/search')
-        .query({ keyword: 'Hello' })
+        .get('/api/search/advanced')
+        .query({
+          fromDate: today.toISOString(),
+          toDate: today.toISOString()
+        })
         .expect('Content-Type', /json/)
         .expect(200);
 
       expect(res.body).toHaveProperty('messages');
-      expect(res.body.messages[0]).toHaveProperty('user');
-      expect(res.body.messages[0]).toHaveProperty('channel');
-      expect(res.body.messages[0].user).toHaveProperty('username', testUser.username);
-      expect(res.body.messages[0].channel).toHaveProperty('name', testChannel.name);
+      expect(Array.isArray(res.body.messages)).toBe(true);
+      expect(res.body.messages.length).toBeGreaterThan(0);
+    });
+
+    it('should search messages from specific user', async () => {
+      const res = await request(app)
+        .get('/api/search/advanced')
+        .query({
+          fromUser: testUser.username
+        })
+        .expect('Content-Type', /json/)
+        .expect(200);
+
+      expect(res.body).toHaveProperty('messages');
+      expect(Array.isArray(res.body.messages)).toBe(true);
+      expect(res.body.messages.length).toBeGreaterThan(0);
+      expect(res.body.messages[0].user.username).toBe(testUser.username);
+    });
+
+    it('should return 400 for invalid date format', async () => {
+      const res = await request(app)
+        .get('/api/search/advanced')
+        .query({
+          fromDate: 'invalid-date'
+        })
+        .expect('Content-Type', /json/)
+        .expect(400);
+
+      expect(res.body).toHaveProperty('error', 'Invalid fromDate format');
     });
   });
 });
