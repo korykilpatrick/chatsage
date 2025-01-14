@@ -2,8 +2,16 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '@db';
 import { messages, channels } from '@db/schema';
 import { and, eq, desc, gt, lt, lte, gte, sql } from 'drizzle-orm';
+import { z } from 'zod';
 
 const router = Router({ mergeParams: true }); // Add mergeParams to access parent route parameters
+
+// Message validation schema
+const messageSchema = z.object({
+  content: z.string()
+    .min(1, 'Message content cannot be empty')
+    .max(2000, 'Message content too long'),
+});
 
 // Authentication middleware
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
@@ -78,7 +86,10 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     const includeDeleted = req.query.includeDeleted === 'true';
 
     // Build conditions array
-    const conditions = [eq(messages.channelId, channelId)];
+    const conditions = [
+      eq(messages.channelId, channelId),
+      eq(messages.parentMessageId, null) // Only get top-level messages, not thread replies
+    ];
 
     if (!includeDeleted) {
       conditions.push(eq(messages.deleted, false));
@@ -156,10 +167,10 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
 
-    const { content } = req.body;
-    if (!content || content.trim().length === 0) {
+    const result = messageSchema.safeParse(req.body);
+    if (!result.success) {
       res.setHeader('Content-Type', 'application/json');
-      return res.status(400).json({ error: 'Message content cannot be empty' });
+      return res.status(400).json({ error: result.error.errors[0].message });
     }
 
     // Check if channel exists
@@ -178,7 +189,7 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
     const [newMessage] = await db
       .insert(messages)
       .values({
-        content: content.trim(),
+        content: result.data.content.trim(),
         channelId,
         userId: req.user!.id,
         workspaceId: channel.workspaceId,
@@ -201,18 +212,17 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
 router.put('/:messageId', requireAuth, canModifyMessage, async (req: Request, res: Response) => {
   try {
     const messageId = parseInt(req.params.messageId);
-    const { content } = req.body;
-
-    if (!content || content.trim().length === 0) {
+    const result = messageSchema.safeParse(req.body);
+    if (!result.success) {
       res.setHeader('Content-Type', 'application/json');
-      return res.status(400).json({ error: 'Message content cannot be empty' });
+      return res.status(400).json({ error: result.error.errors[0].message });
     }
 
     // Update message
     const [updatedMessage] = await db
       .update(messages)
       .set({
-        content: content.trim(),
+        content: result.data.content.trim(),
         updatedAt: new Date()
       })
       .where(eq(messages.id, messageId))
@@ -280,7 +290,7 @@ router.get('/:messageId/thread', requireAuth, async (req: Request, res: Response
 
     res.setHeader('Content-Type', 'application/json');
     return res.json({
-      messages: threadMessages
+      messages: [...threadMessages]
     });
   } catch (error) {
     console.error('Error fetching thread messages:', error);
@@ -298,10 +308,10 @@ router.post('/:messageId/thread', requireAuth, async (req: Request, res: Respons
       return res.status(400).json({ error: 'Invalid message ID' });
     }
 
-    const { content } = req.body;
-    if (!content || content.trim().length === 0) {
+    const result = messageSchema.safeParse(req.body);
+    if (!result.success) {
       res.setHeader('Content-Type', 'application/json');
-      return res.status(400).json({ error: 'Message content cannot be empty' });
+      return res.status(400).json({ error: result.error.errors[0].message });
     }
 
     // Check if parent message exists
@@ -320,7 +330,7 @@ router.post('/:messageId/thread', requireAuth, async (req: Request, res: Respons
     const [newMessage] = await db
       .insert(messages)
       .values({
-        content: content.trim(),
+        content: result.data.content.trim(),
         channelId: parentMessage.channelId,
         userId: req.user!.id,
         workspaceId: parentMessage.workspaceId,

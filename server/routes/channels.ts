@@ -16,7 +16,9 @@ const requireAuth = (req: Request, res: Response, next: NextFunction) => {
 
 // Schema for channel creation/update
 const channelSchema = z.object({
-  name: z.string().min(1, 'Channel name cannot be empty'),
+  name: z.string().min(1, 'Channel name cannot be empty')
+    .max(100, 'Channel name too long')
+    .regex(/^[a-z0-9-]+$/, 'Channel name can only contain lowercase letters, numbers, and hyphens'),
   type: z.enum(channelTypeEnum.enumValues).default('PUBLIC'),
 });
 
@@ -114,10 +116,26 @@ router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Respo
 
     const result = channelSchema.safeParse(req.body);
     if (!result.success) {
-      return res.status(400).json({ error: 'Channel name cannot be empty' });
+      return res.status(400).json({ error: result.error.errors[0].message });
     }
 
     const { name, type } = result.data;
+
+    // Check if channel name already exists in workspace
+    const [existingChannel] = await db
+      .select()
+      .from(channels)
+      .where(
+        and(
+          eq(channels.workspaceId, workspaceId),
+          eq(channels.name, name.trim())
+        )
+      )
+      .limit(1);
+
+    if (existingChannel) {
+      return res.status(400).json({ error: 'Channel name already exists in this workspace' });
+    }
 
     // Create new channel
     const [newChannel] = await db
@@ -127,6 +145,7 @@ router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Respo
         workspaceId,
         type,
         archived: false,
+        createdBy: req.user!.id,
         createdAt: new Date(),
         updatedAt: new Date()
       })
@@ -174,7 +193,7 @@ router.put('/channels/:channelId', async (req: Request, res: Response) => {
 
     const result = channelSchema.safeParse(req.body);
     if (!result.success) {
-      return res.status(400).json({ error: 'Channel name cannot be empty' });
+      return res.status(400).json({ error: result.error.errors[0].message });
     }
 
     const { name, type } = result.data;
