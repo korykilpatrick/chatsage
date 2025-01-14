@@ -41,11 +41,17 @@ router.use(setJsonContentType);
 router.use(requireAuth);
 
 // GET /api/workspaces/:workspaceId/channels - List channels in workspace
-router.get('/workspaces/:workspaceId/channels', async (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId);
     if (isNaN(workspaceId)) {
-      return res.status(400).json({ error: 'Invalid workspace ID' });
+      return res.status(400).json({ 
+        error: 'Invalid workspace ID',
+        details: {
+          code: 'INVALID_WORKSPACE_ID',
+          message: 'Workspace ID must be a valid number'
+        }
+      });
     }
 
     // Check if workspace exists
@@ -56,7 +62,13 @@ router.get('/workspaces/:workspaceId/channels', async (req: Request, res: Respon
       .limit(1);
 
     if (!workspace) {
-      return res.status(404).json({ error: 'Workspace not found' });
+      return res.status(404).json({ 
+        error: 'Workspace not found',
+        details: {
+          code: 'WORKSPACE_NOT_FOUND',
+          message: 'The specified workspace does not exist'
+        }
+      });
     }
 
     // Get channels with optional archived filter
@@ -76,12 +88,18 @@ router.get('/workspaces/:workspaceId/channels', async (req: Request, res: Respon
     return res.json({ channels: channelsList });
   } catch (error) {
     console.error('Error fetching channels:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      details: {
+        code: 'SERVER_ERROR',
+        message: 'Failed to fetch channels'
+      }
+    });
   }
 });
 
 // POST /api/workspaces/:workspaceId/channels - Create channel
-router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId);
     if (isNaN(workspaceId)) {
