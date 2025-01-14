@@ -46,8 +46,9 @@ describe('Messages API', () => {
       next();
     });
 
-    // Mount the messages router with mergeParams: true
+    // Mount message routes
     app.use('/api/channels/:channelId/messages', messagesRouter);
+    app.use('/api/messages', messagesRouter); // Add this for thread endpoints
   });
 
   afterEach(async () => {
@@ -106,6 +107,164 @@ describe('Messages API', () => {
     });
   });
 
+  describe('GET /api/messages/:messageId/thread', () => {
+    let parentMessage: any;
+
+    beforeEach(async () => {
+      // Create parent message for thread tests
+      [parentMessage] = await db.insert(messagesTable).values({
+        content: 'Parent message',
+        channelId: testChannel.id,
+        userId: testUser.id,
+        deleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }).returning();
+
+      // Add thread replies
+      await db.insert(messagesTable).values([
+        {
+          content: 'Reply 1',
+          channelId: testChannel.id,
+          userId: testUser.id,
+          parentMessageId: parentMessage.id,
+          deleted: false,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        },
+        {
+          content: 'Reply 2',
+          channelId: testChannel.id,
+          userId: testUser.id,
+          parentMessageId: parentMessage.id,
+          deleted: false,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      ]);
+    });
+
+    it('should return thread messages', async () => {
+      const response = await request(app)
+        .get(`/api/messages/${parentMessage.id}/thread`)
+        .expect('Content-Type', /json/)
+        .expect(200);
+
+      expect(response.body).toHaveProperty('messages');
+      expect(Array.isArray(response.body.messages)).toBe(true);
+      expect(response.body.messages).toHaveLength(2);
+
+      // Only check specific fields we care about for thread messages
+      response.body.messages.forEach((message: any) => {
+        expect(message).toMatchObject({
+          content: expect.any(String),
+          channelId: testChannel.id,
+          userId: testUser.id,
+          parentMessageId: parentMessage.id,
+          deleted: false,
+        });
+      });
+    });
+
+    it('should return empty array when no thread messages exist', async () => {
+      // Create a message without replies
+      const [messageWithoutReplies] = await db.insert(messagesTable).values({
+        content: 'Message without replies',
+        channelId: testChannel.id,
+        userId: testUser.id,
+        deleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }).returning();
+
+      const response = await request(app)
+        .get(`/api/messages/${messageWithoutReplies.id}/thread`)
+        .expect('Content-Type', /json/)
+        .expect(200);
+
+      expect(response.body).toHaveProperty('messages');
+      expect(Array.isArray(response.body.messages)).toBe(true);
+      expect(response.body.messages).toHaveLength(0);
+    });
+
+    it('should handle non-existent parent message', async () => {
+      const response = await request(app)
+        .get('/api/messages/999/thread')
+        .expect('Content-Type', /json/)
+        .expect(404);
+
+      expect(response.body).toHaveProperty('error', 'Parent message not found');
+    });
+  });
+
+  describe('POST /api/messages/:messageId/thread', () => {
+    let parentMessage: any;
+
+    beforeEach(async () => {
+      // Create parent message for thread tests
+      [parentMessage] = await db.insert(messagesTable).values({
+        content: 'Parent message',
+        channelId: testChannel.id,
+        userId: testUser.id,
+        deleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }).returning();
+    });
+
+    it('should create a thread reply', async () => {
+      const replyData = {
+        content: 'New thread reply'
+      };
+
+      const response = await request(app)
+        .post(`/api/messages/${parentMessage.id}/thread`)
+        .send(replyData)
+        .expect('Content-Type', /json/)
+        .expect(201);
+
+      // Check only the fields we care about for thread creation
+      expect(response.body).toMatchObject({
+        content: replyData.content,
+        channelId: testChannel.id,
+        userId: testUser.id,
+        parentMessageId: parentMessage.id,
+        deleted: false,
+        id: expect.any(Number),
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String)
+      });
+
+      // Verify reply was created in database
+      const [dbReply] = await db
+        .select()
+        .from(messagesTable)
+        .where(eq(messagesTable.parentMessageId, parentMessage.id));
+
+      expect(dbReply).toBeTruthy();
+      expect(dbReply.content).toBe(replyData.content);
+    });
+
+    it('should return 400 for empty reply content', async () => {
+      const response = await request(app)
+        .post(`/api/messages/${parentMessage.id}/thread`)
+        .send({ content: '' })
+        .expect('Content-Type', /json/)
+        .expect(400);
+
+      expect(response.body).toHaveProperty('error', 'Message content cannot be empty');
+    });
+
+    it('should return 404 for non-existent parent message', async () => {
+      const response = await request(app)
+        .post('/api/messages/999/thread')
+        .send({ content: 'Reply to non-existent message' })
+        .expect('Content-Type', /json/)
+        .expect(404);
+
+      expect(response.body).toHaveProperty('error', 'Parent message not found');
+    });
+  });
   describe('POST /api/channels/:channelId/messages', () => {
     it('should create a new message', async () => {
       const messageData = {

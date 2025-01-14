@@ -250,4 +250,94 @@ router.delete('/:messageId', requireAuth, canModifyMessage, async (req: Request,
   }
 });
 
+// GET /api/messages/:messageId/thread
+router.get('/:messageId/thread', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const messageId = parseInt(req.params.messageId);
+    if (isNaN(messageId)) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(400).json({ error: 'Invalid message ID' });
+    }
+
+    // Check if parent message exists
+    const [parentMessage] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, messageId))
+      .limit(1);
+
+    if (!parentMessage) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(404).json({ error: 'Parent message not found' });
+    }
+
+    // Get thread messages
+    const threadMessages = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.parentMessageId, messageId))
+      .orderBy(messages.createdAt);
+
+    res.setHeader('Content-Type', 'application/json');
+    return res.json({
+      messages: threadMessages
+    });
+  } catch (error) {
+    console.error('Error fetching thread messages:', error);
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/messages/:messageId/thread
+router.post('/:messageId/thread', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const messageId = parseInt(req.params.messageId);
+    if (isNaN(messageId)) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(400).json({ error: 'Invalid message ID' });
+    }
+
+    const { content } = req.body;
+    if (!content || content.trim().length === 0) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(400).json({ error: 'Message content cannot be empty' });
+    }
+
+    // Check if parent message exists
+    const [parentMessage] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, messageId))
+      .limit(1);
+
+    if (!parentMessage) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(404).json({ error: 'Parent message not found' });
+    }
+
+    // Create thread message
+    const [newMessage] = await db
+      .insert(messages)
+      .values({
+        content: content.trim(),
+        channelId: parentMessage.channelId,
+        userId: req.user!.id,
+        workspaceId: parentMessage.workspaceId,
+        parentMessageId: messageId,
+        deleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
+
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(201).json(newMessage);
+  } catch (error) {
+    console.error('Error creating thread message:', error);
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

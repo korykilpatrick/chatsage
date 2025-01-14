@@ -1,4 +1,4 @@
-import { pgTable, serial, text, boolean, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { relations, type InferModel } from "drizzle-orm";
 
@@ -158,6 +158,7 @@ export const messagesRelations = relations(messages, ({ one, many }) => ({
     fields: [messages.parentMessageId],
     references: [messages.id],
   }),
+  replies: many(messages),
   reactions: many(messageReactions),
   files: many(files),
   pins: many(pinnedMessages),

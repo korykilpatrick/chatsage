@@ -17,11 +17,11 @@ export function registerRoutes(app: Express): Server {
   // Register routes in order of specificity
   // More specific routes first
   app.use('/api/workspaces/:workspaceId/channels', channelsRouter);
+  app.use('/api/channels', channelsRouter);  // Add this for global channel routes
   app.use('/api/channels/:channelId/messages', messagesRouter);
   app.use('/api/messages/:messageId/reactions', reactionsRouter);
   app.use('/api/messages/:messageId/pin', pinsRouter);
   app.use('/api/channels/:channelId/pins', pinsRouter);
-  app.use('/api/channels', channelsRouter);
   app.use('/api/users', usersRouter);
 
   return httpServer;
