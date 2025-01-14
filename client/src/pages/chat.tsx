@@ -14,11 +14,13 @@ export default function Chat() {
   const { user, logout } = useUser();
   const { data: channels } = useQuery<Channel[]>({
     queryKey: ['/api/channels'],
-    enabled: !!user
+    enabled: !!user,
+    // Provide an empty array as fallback to avoid undefined issues
+    initialData: [],
   });
 
   useEffect(() => {
-    if (channels?.length > 0) {
+    if (channels && channels.length > 0) {
       channels.forEach(channel => {
         socket?.emit('join_channel', channel.id);
       });
@@ -37,6 +39,7 @@ export default function Chat() {
             Logout
           </Button>
         </div>
+        {/* Pass empty array as fallback for channels */}
         <ChannelList channels={channels || []} />
       </div>
 
