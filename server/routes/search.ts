@@ -62,12 +62,13 @@ const advancedSearchSchema = baseSearchSchema.extend({
   )
 });
 
-// Helper function to create archived condition
-const getArchivedCondition = (): SQL => {
-  return or(
+// Helper function to create archived condition that always returns a valid SQL expression
+const getArchivedCondition = (): SQL<unknown> => {
+  const condition = or(
     isNull(channels.archived),
     eq(channels.archived, false)
   );
+  return sql`${condition}`;
 };
 
 router.get('/', async (req, res) => {
@@ -88,7 +89,7 @@ router.get('/', async (req, res) => {
     const { keyword, workspaceId, includeArchived } = result.data;
 
     // Build conditions array first
-    const conditions: SQL[] = [];
+    const conditions: SQL<unknown>[] = [];
 
     if (keyword) {
       conditions.push(ilike(messages.content, `%${keyword}%`));
@@ -171,7 +172,7 @@ router.get('/advanced', async (req, res) => {
     } = result.data;
 
     // Build conditions array first
-    const conditions: SQL[] = [];
+    const conditions: SQL<unknown>[] = [];
 
     if (keyword) {
       conditions.push(ilike(messages.content, `%${keyword}%`));
