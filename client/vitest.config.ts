@@ -19,18 +19,14 @@ export default defineConfig({
         '**/*.d.ts',
         'src/types/**',
         'src/main.tsx',
-        'src/vite-env.d.ts',
-        'src/test/mocks/**',
-        // Exclude purely presentational components
-        'src/components/ui/**',
-        // Exclude development utilities
-        'src/lib/dev-tools/**',
+        'src/vite-env.d.ts'
       ],
-      all: true,
-      branches: 70,
-      functions: 70,
-      lines: 70,
-      statements: 70
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 75,
+        statements: 80
+      }
     },
     watch: {
       onStart: () => {
