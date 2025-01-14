@@ -22,6 +22,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 const createChannelSchema = z.object({
   name: z.string().min(1, "Channel name is required"),
@@ -37,6 +38,7 @@ interface CreateChannelButtonProps {
 
 export const CreateChannelButton: FC<CreateChannelButtonProps> = ({ className }) => {
   const [open, setOpen] = useState(false);
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const form = useForm<CreateChannelForm>({
     resolver: zodResolver(createChannelSchema),
@@ -60,7 +62,8 @@ export const CreateChannelButton: FC<CreateChannelButtonProps> = ({ className })
       });
 
       if (!response.ok) {
-        throw new Error("Failed to create channel");
+        const error = await response.text();
+        throw new Error(error);
       }
 
       return response.json();
@@ -69,11 +72,22 @@ export const CreateChannelButton: FC<CreateChannelButtonProps> = ({ className })
       queryClient.invalidateQueries({ queryKey: ["/api/channels"] });
       setOpen(false);
       form.reset();
+      toast({
+        title: "Channel created",
+        description: "Your new channel has been created successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create channel",
+        variant: "destructive",
+      });
     },
   });
 
-  const onSubmit = (data: CreateChannelForm) => {
-    createChannel.mutate(data);
+  const onSubmit = async (data: CreateChannelForm) => {
+    await createChannel.mutateAsync(data);
   };
 
   return (
@@ -81,11 +95,11 @@ export const CreateChannelButton: FC<CreateChannelButtonProps> = ({ className })
       <DialogTrigger asChild>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           className={className}
+          title="Create Channel"
         >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Channel
+          <Plus className="w-4 h-4" />
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -135,7 +149,11 @@ export const CreateChannelButton: FC<CreateChannelButtonProps> = ({ className })
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full">
+            <Button 
+              type="submit" 
+              className="w-full"
+              disabled={createChannel.isPending}
+            >
               Create Channel
             </Button>
           </form>
