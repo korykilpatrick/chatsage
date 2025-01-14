@@ -5,6 +5,7 @@ import { messages, users, channels, workspaces, files } from '@db/schema';
 import { eq, and, ilike, gte, lte } from 'drizzle-orm';
 import searchRouter from '../routes/search';
 import filesRouter from '../routes/files';
+import 'cross-fetch/polyfill';
 
 // Set up the test Express application
 export async function setupTestApp(): Promise<Express> {
