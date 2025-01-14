@@ -21,6 +21,12 @@ export function registerRoutes(app: Express): Server {
   // Parse JSON bodies for API requests
   app.use(express.json());
 
+  // Set JSON content type for all API routes
+  app.use('/api', (req, res, next) => {
+    res.setHeader('Content-Type', 'application/json');
+    next();
+  });
+
   // Error handling middleware
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error('Error:', err);
@@ -35,16 +41,16 @@ export function registerRoutes(app: Express): Server {
 
   // Register routes in order of specificity
   // More specific routes first
-  app.use('/api/search', searchRouter);  
   app.use('/api/workspaces/:workspaceId/channels', channelsRouter);
+  app.use('/api/search', searchRouter);
   app.use('/api/channels/:channelId/messages', messagesRouter);
   app.use('/api/messages/:messageId/reactions', reactionsRouter);
   app.use('/api/messages/:messageId/pin', pinsRouter);
   app.use('/api/channels/:channelId/pins', pinsRouter);
-  app.use('/api/files', filesRouter);  
-  app.use('/api/channels', channelsRouter);  
+  app.use('/api/files', filesRouter);
+  app.use('/api/channels', channelsRouter);
   app.use('/api/users', usersRouter);
-  app.use('/api/emojis', emojisRouter);  
+  app.use('/api/emojis', emojisRouter);
 
   return httpServer;
 }
