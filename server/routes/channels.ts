@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '@db';
-import { channels, workspaces, channelTypeEnum } from '@db/schema';
+import { channels, workspaces, channelTypeEnum, type Channel, type InsertChannel } from '@db/schema';
 import { and, eq, asc } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -9,6 +9,7 @@ const router = Router();
 // Authentication middleware
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user) {
+    res.setHeader('Content-Type', 'application/json');
     return res.status(401).json({ error: 'Not authenticated' });
   }
   next();
@@ -32,30 +33,7 @@ const setJsonContentType = (_req: Request, res: Response, next: NextFunction) =>
 router.use(setJsonContentType);
 router.use(requireAuth);
 
-// GET /api/channels - Global channel listing
-router.get('/channels', async (req: Request, res: Response) => {
-  try {
-    const includeArchived = req.query.includeArchived === 'true';
-    let conditions = [];
-
-    if (!includeArchived) {
-      conditions.push(eq(channels.archived, false));
-    }
-
-    const channelsList = await db
-      .select()
-      .from(channels)
-      .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(asc(channels.name));
-
-    return res.json({ channels: channelsList });
-  } catch (error) {
-    console.error('Error fetching channels:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// GET /api/workspaces/:workspaceId/channels
+// GET /api/workspaces/:workspaceId/channels - List channels in workspace
 router.get('/workspaces/:workspaceId/channels', async (req: Request, res: Response) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId);
@@ -95,7 +73,7 @@ router.get('/workspaces/:workspaceId/channels', async (req: Request, res: Respon
   }
 });
 
-// POST /api/workspaces/:workspaceId/channels
+// POST /api/workspaces/:workspaceId/channels - Create channel
 router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Response) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId);
@@ -148,7 +126,7 @@ router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Respo
         createdBy: req.user!.id,
         createdAt: new Date(),
         updatedAt: new Date()
-      })
+      } as InsertChannel)
       .returning();
 
     return res.status(201).json(newChannel);
@@ -158,7 +136,7 @@ router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Respo
   }
 });
 
-// GET /api/channels/:channelId
+// GET /api/channels/:channelId - Get channel details
 router.get('/channels/:channelId', async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.channelId);
@@ -183,7 +161,7 @@ router.get('/channels/:channelId', async (req: Request, res: Response) => {
   }
 });
 
-// PUT /api/channels/:channelId
+// PUT /api/channels/:channelId - Update channel
 router.put('/channels/:channelId', async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.channelId);
@@ -227,7 +205,7 @@ router.put('/channels/:channelId', async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /api/channels/:channelId
+// DELETE /api/channels/:channelId - Archive channel
 router.delete('/channels/:channelId', async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.channelId);
@@ -255,7 +233,7 @@ router.delete('/channels/:channelId', async (req: Request, res: Response) => {
       })
       .where(eq(channels.id, channelId));
 
-    return res.status(200).json({ message: 'Channel archived' });
+    return res.json({ message: 'Channel archived' });
   } catch (error) {
     console.error('Error archiving channel:', error);
     return res.status(500).json({ error: 'Internal server error' });

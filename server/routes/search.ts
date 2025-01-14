@@ -30,17 +30,29 @@ const baseSearchSchema = z.object({
 });
 
 const advancedSearchSchema = baseSearchSchema.extend({
-  fromDate: z.preprocess(
-    (val) => (val ? new Date(String(val)) : undefined),
-    z.date().optional()
-  ).refine(val => !val || !isNaN(val.getTime()), {
-    message: 'Invalid fromDate format'
+  fromDate: z.string().optional().transform((val, ctx) => {
+    if (!val) return undefined;
+    const date = new Date(val);
+    if (isNaN(date.getTime())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invalid fromDate format'
+      });
+      return z.NEVER;
+    }
+    return date;
   }),
-  toDate: z.preprocess(
-    (val) => (val ? new Date(String(val)) : undefined),
-    z.date().optional()
-  ).refine(val => !val || !isNaN(val.getTime()), {
-    message: 'Invalid toDate format'
+  toDate: z.string().optional().transform((val, ctx) => {
+    if (!val) return undefined;
+    const date = new Date(val);
+    if (isNaN(date.getTime())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invalid toDate format'
+      });
+      return z.NEVER;
+    }
+    return date;
   }),
   fromUser: z.string().optional(),
   channelId: z.preprocess(
@@ -136,11 +148,13 @@ router.get('/advanced', async (req, res) => {
     // Validate input
     const result = advancedSearchSchema.safeParse(req.query);
     if (!result.success) {
-      // Check for specific validation errors
-      for (const error of result.error.errors) {
-        if (error.message === 'Invalid fromDate format' || error.message === 'Invalid toDate format') {
-          return res.status(400).json({ error: 'Invalid fromDate format' });
-        }
+      // Look for custom error messages first
+      const customError = result.error.errors.find(e => 
+        e.message === 'Invalid fromDate format' || e.message === 'Invalid toDate format'
+      );
+
+      if (customError) {
+        return res.status(400).json({ error: customError.message });
       }
 
       return res.status(400).json({
