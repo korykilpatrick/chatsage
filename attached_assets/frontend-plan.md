@@ -1,4 +1,4 @@
-# Frontend Plan (v8 - Jest, React Testing Library, and MSW; **No Storybook**)
+# Frontend Plan (v8 - Vitest, React Testing Library, and MSW; **No Storybook**)
 
 This **frontend plan** outlines how we'll build and integrate a React + TypeScript frontend for **ChatSage**, a Slack-like clone, within a **monorepo** that also houses the backend services. The plan follows a series of checkpoints, each of which must have *all tests passing* before moving on. Below are refinements and clarifications that incorporate best practices and feedback for iterating with Replit Agent in **small, context-rich prompts**.
 
@@ -21,7 +21,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
    - Consider bridging socket data to Redux if multiple components need it.
 
 4. **Testing**  
-   - We will use **Jest** for our unit and integration tests.  
+   - We will use **Vitest** for our unit and integration tests.  
    - **React Testing Library** will be used for component-level testing and assertions.  
    - **MSW (Mock Service Worker)** will be used to mock API calls so we can test without hitting real endpoints.  
    - Each checkpoint references tests. We aim for **100% pass rate** of relevant tests before moving on.
@@ -41,7 +41,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
 
 ## Checkpoint 1: **Project Bootstrap & Environment**
 1. **Context & Objective**  
-   - We want a fully operational React + TS environment with Vite, plus a basic test harness (Jest, React Testing Library, MSW).  
+   - We want a fully operational React + TS environment with Vite, plus a basic test harness (Vitest, React Testing Library, MSW).  
    - We already have `client/main.tsx`, `vite.config.ts`, etc.
 
 2. **Tasks**  
@@ -50,7 +50,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
    - **Install & Configure React Router**: For multi-page routes (e.g., login, chat, 404).  
    - **Create/Refine `types.ts`**: Move shared enums (ONLINE, AWAY, etc.) and channel types (PUBLIC, PRIVATE, DM) here to mirror the backend.  
    - **Testing**: 
-     - Use **Jest** as our test runner.  
+     - Use **Vitest** as our test runner.  
      - Use **React Testing Library** for component rendering and assertions.  
      - Use **MSW** to mock API calls in test environments.  
      - Possibly run `npm test` (or `pnpm test`) with a sample test to ensure everything is wired up.
@@ -81,7 +81,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
    - **Implementation**: Possibly wrap your `dialog` or `drawer` for consistency.  
 
 3. **Testing Criteria**  
-   - Provide new or updated Jest tests using React Testing Library: `BaseOverlay.test.tsx`.  
+   - Provide new or updated Vitest tests using React Testing Library: `BaseOverlay.test.tsx`.  
    - Use MSW if any API call is needed (though an overlay might not need it yet).  
    - Run the test suite to confirm passing results.
 
@@ -100,7 +100,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
    - **Handle `onCreateWorkspace`**: Default to `archived=false`.  
 
 3. **Testing Criteria**  
-   - Write or update `WorkspaceNavigation.test.tsx` using React Testing Library + Jest + MSW to mock any backend calls.  
+   - Write or update `WorkspaceNavigation.test.tsx` using React Testing Library + Vitest + MSW to mock any backend calls.  
    - Ensure 100% pass rate.
 
 **Before moving to Checkpoint 4**  
@@ -162,7 +162,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
      - Threading if you want nested replies (optional).  
 
 3. **Testing Criteria**  
-   - Update or create `message-list.test.tsx` using Jest + React Testing Library.  
+   - Update or create `message-list.test.tsx` using Vitest + React Testing Library.  
    - Mock data with MSW or a local fixture.  
    - Confirm coverage for pinned/deleted messages.
 
@@ -185,7 +185,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
    - Integrate with your real-time or Redux logic. Possibly show a preview of file attachments.
 
 3. **Testing Criteria**  
-   - `message-input.test.tsx`: ensure text/emoji/file uploads are tested with Jest + React Testing Library.  
+   - `message-input.test.tsx`: ensure text/emoji/file uploads are tested with Vitest + React Testing Library.  
    - Use MSW to mock the file upload endpoint if needed.  
    - All pass before next checkpoint.
 
@@ -205,7 +205,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
    - Possibly incorporate a drag-and-drop area.
 
 3. **Testing Criteria**  
-   - `FileSharingOverlay.test.tsx` with Jest + React Testing Library.  
+   - `FileSharingOverlay.test.tsx` with Vitest + React Testing Library.  
    - MSW to mock upload endpoints.  
    - Ensure no regressions in message input’s file logic.
 
@@ -220,7 +220,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
    - Add a filter option for archived/deleted if desired.
 
 3. **Testing Criteria**  
-   - `SearchBar.test.tsx` with React Testing Library + Jest.  
+   - `SearchBar.test.tsx` with React Testing Library + Vitest.  
    - MSW to mock search endpoints.  
    - Confirm coverage.
 
@@ -272,7 +272,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
      ```
 
 3. **Testing Criteria**  
-   - `EmojiReactionPicker.test.tsx`: test listing, filtering, selection with Jest + React Testing Library.  
+   - `EmojiReactionPicker.test.tsx`: test listing, filtering, selection with Vitest + React Testing Library.  
    - Use MSW to mock the emoji list if necessary.  
    - Ensure coverage.
 
@@ -287,7 +287,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
    - **Connect** to `use-user.ts` or Redux for saving preferences.
 
 3. **Testing Criteria**  
-   - `PreferencesOverlay.test.tsx` using Jest + React Testing Library.  
+   - `PreferencesOverlay.test.tsx` using Vitest + React Testing Library.  
    - Use MSW to mock any preference-save endpoints.  
    - 100% pass rate.
 
@@ -302,7 +302,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
    - Use `channelsApi.ts` for creation.
 
 3. **Testing Criteria**  
-   - `NewChannelGroupCreationOverlay.test.tsx` with Jest + React Testing Library.  
+   - `NewChannelGroupCreationOverlay.test.tsx` with Vitest + React Testing Library.  
    - MSW for mocking creation.  
    - Confirm the creation flow works.
 
@@ -338,7 +338,7 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
 
 4. **Explicit Testing Guidance**  
    - In each prompt, specify which test file(s) you expect to run (e.g., `BaseOverlay.test.tsx`) and what coverage you want.
-   - Emphasize using **Jest**, **React Testing Library**, and **MSW** for mocking API calls.
+   - Emphasize using **Vitest**, **React Testing Library**, and **MSW** for mocking API calls.
 
 5. **Show Example Before/After**  
    - For code changes (e.g., filtering archived channels), show a snippet of the current approach and the desired outcome.
@@ -346,4 +346,4 @@ This **frontend plan** outlines how we'll build and integrate a React + TypeScri
 6. **Reference Generated APIs**  
    - Mention calls to `channelsApi`, `searchApi`, `workspacesApi`, etc., so Replit Agent knows how your data flows.
 
-By following this updated plan (v8) and leveraging Jest, React Testing Library, and MSW, you’ll maintain a stable, well-documented, and well-tested frontend codebase that aligns with your Slack-like ChatSage application. Remember: *At each checkpoint, ensure all tests pass before moving on.* If you have any questions, prompt Replit Agent for clarifications. Good luck building ChatSage!
+By following this updated plan (v8) and leveraging Vitest, React Testing Library, and MSW, you’ll maintain a stable, well-documented, and well-tested frontend codebase that aligns with your Slack-like ChatSage application. Remember: *At each checkpoint, ensure all tests pass before moving on.* If you have any questions, prompt Replit Agent for clarifications. Good luck building ChatSage!
