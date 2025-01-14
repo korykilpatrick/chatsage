@@ -13,21 +13,27 @@ function Router() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div role="main" className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-border" />
       </div>
     );
   }
 
   if (!user) {
-    return <AuthPage />;
+    return (
+      <main>
+        <AuthPage />
+      </main>
+    );
   }
 
   return (
-    <Switch>
-      <Route path="/" component={Chat} />
-      <Route component={NotFound} />
-    </Switch>
+    <main>
+      <Switch>
+        <Route path="/" component={Chat} />
+        <Route component={NotFound} />
+      </Switch>
+    </main>
   );
 }
 
