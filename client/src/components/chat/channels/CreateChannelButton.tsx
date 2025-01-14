@@ -25,7 +25,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 const createChannelSchema = z.object({
-  name: z.string().min(1, "Channel name is required"),
+  name: z.string().min(1, "Channel name is required").transform(name => name.toLowerCase().replace(/\s+/g, '-')),
   isPrivate: z.boolean().default(false),
   topic: z.string().optional(),
 });
@@ -58,12 +58,15 @@ export const CreateChannelButton: FC<CreateChannelButtonProps> = ({ className })
           name: data.name,
           type: data.isPrivate ? "PRIVATE" : "PUBLIC",
           topic: data.topic || null,
+          workspaceId: 1, // Default workspace ID
         }),
+        credentials: 'include'
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+        const errorText = await response.text();
+        console.error('Channel creation failed:', errorText);
+        throw new Error(errorText || 'Failed to create channel');
       }
 
       return response.json();
@@ -77,17 +80,22 @@ export const CreateChannelButton: FC<CreateChannelButtonProps> = ({ className })
         description: "Your new channel has been created successfully.",
       });
     },
-    onError: (error) => {
+    onError: (error: Error) => {
+      console.error('Channel creation error:', error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to create channel",
+        title: "Error creating channel",
+        description: error.message || "Failed to create channel. Please try again.",
         variant: "destructive",
       });
     },
   });
 
   const onSubmit = async (data: CreateChannelForm) => {
-    await createChannel.mutateAsync(data);
+    try {
+      await createChannel.mutateAsync(data);
+    } catch (error) {
+      console.error('Form submission error:', error);
+    }
   };
 
   return (
