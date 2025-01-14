@@ -42,33 +42,44 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 // Custom test utilities
-export const createMockUser = (overrides = {}) => ({
-  id: '1',
-  name: 'Test User',
-  email: 'test@example.com',
-  ...overrides
-});
-
 export const createMockChannel = (overrides = {}) => ({
-  id: '1',
-  name: 'general',
+  id: 1,
+  name: 'Test Channel',
   type: 'PUBLIC',
-  workspaceId: '1',
+  workspaceId: 1,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  archived: false,
+  topic: null,
   ...overrides
 });
 
 export const createMockWorkspace = (overrides = {}) => ({
-  id: '1',
+  id: 1,
   name: 'Test Workspace',
-  ownerId: '1',
+  ownerId: 1,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  archived: false,
   ...overrides
 });
 
 export const createMockMessage = (overrides = {}) => ({
-  id: '1',
+  id: 1,
   content: 'Test message',
-  userId: '1',
-  channelId: '1',
-  createdAt: new Date().toISOString(),
+  userId: 1,
+  channelId: 1,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  archived: false,
+  ...overrides
+});
+
+export const createMockUser = (overrides = {}) => ({
+  id: 1,
+  name: 'Test User',
+  email: 'test@example.com',
+  createdAt: new Date(),
+  updatedAt: new Date(),
   ...overrides
 });

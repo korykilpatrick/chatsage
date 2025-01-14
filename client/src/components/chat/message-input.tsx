@@ -12,9 +12,9 @@ export default function MessageInput() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !user) return;
+    if (!message.trim() || !user || !socket) return;
 
-    socket?.emit('new_message', {
+    socket.emit('new_message', {
       content: message,
       userId: user.id,
       channelId: 1 // TODO: Dynamic channel ID
@@ -24,7 +24,7 @@ export default function MessageInput() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 border-t">
+    <form onSubmit={handleSubmit} className="p-4 border-t" role="form">
       <div className="flex gap-2">
         <Input
           value={message}

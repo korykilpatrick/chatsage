@@ -9,7 +9,7 @@ type ChannelListProps = {
 
 export default function ChannelList({ channels }: ChannelListProps) {
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea className="flex-1" role="region" aria-label="Channels list">
       <div className="p-2 space-y-1">
         {channels.map((channel) => (
           <Button
