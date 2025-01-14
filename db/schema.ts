@@ -10,7 +10,7 @@ export const channelTypeEnum = pgEnum('channel_type_enum', ['PUBLIC', 'PRIVATE',
 // Tables
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),  
+  username: text("username").notNull(),  // Changed from unique to just notNull since we'll use email for login
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   displayName: text("display_name").notNull(),

@@ -11,7 +11,7 @@ export default function AuthPage() {
   const { toast } = useToast();
   const registerForm = useForm({
     defaultValues: {
-      username: "",
+      email: "",
       password: "",
       displayName: ""
     }
@@ -19,7 +19,7 @@ export default function AuthPage() {
 
   const loginForm = useForm({
     defaultValues: {
-      username: "",
+      email: "",
       password: ""
     }
   });
@@ -74,10 +74,10 @@ export default function AuthPage() {
               <TabsTrigger value="login">Login</TabsTrigger>
               <TabsTrigger value="register">Register</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="login">
               <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
-                <Input placeholder="Username" {...loginForm.register("username")} />
+                <Input placeholder="Email" type="email" {...loginForm.register("email")} />
                 <Input type="password" placeholder="Password" {...loginForm.register("password")} />
                 <Button type="submit" className="w-full">Login</Button>
               </form>
@@ -85,7 +85,7 @@ export default function AuthPage() {
 
             <TabsContent value="register">
               <form onSubmit={registerForm.handleSubmit(handleRegister)} className="space-y-4">
-                <Input placeholder="Username" {...registerForm.register("username")} />
+                <Input placeholder="Email" type="email" {...registerForm.register("email")} />
                 <Input placeholder="Display Name" {...registerForm.register("displayName")} />
                 <Input type="password" placeholder="Password" {...registerForm.register("password")} />
                 <Button type="submit" className="w-full">Register</Button>
