@@ -15,55 +15,63 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 33035
-externalPort = 4200
-
-[[ports]]
-localPort = 37545
-externalPort = 6800
-
-[[ports]]
-localPort = 37937
-externalPort = 3002
-
-[[ports]]
-localPort = 38299
-externalPort = 8008
-
-[[ports]]
-localPort = 38451
-externalPort = 8081
-
-[[ports]]
-localPort = 38541
-externalPort = 3001
-
-[[ports]]
-localPort = 40007
-externalPort = 3000
-
-[[ports]]
-localPort = 40417
+localPort = 34491
 externalPort = 8000
 
 [[ports]]
-localPort = 44077
+localPort = 35183
 externalPort = 8080
 
 [[ports]]
-localPort = 45117
+localPort = 36449
+externalPort = 3002
+
+[[ports]]
+localPort = 36639
+externalPort = 8099
+
+[[ports]]
+localPort = 38525
+externalPort = 9000
+
+[[ports]]
+localPort = 38557
+externalPort = 3000
+
+[[ports]]
+localPort = 39951
+externalPort = 4200
+
+[[ports]]
+localPort = 41421
+externalPort = 8081
+
+[[ports]]
+localPort = 41873
 externalPort = 5000
 
 [[ports]]
-localPort = 45133
+localPort = 45131
+externalPort = 8008
+
+[[ports]]
+localPort = 45555
+externalPort = 3001
+
+[[ports]]
+localPort = 45733
+externalPort = 6800
+
+[[ports]]
+localPort = 45967
 externalPort = 5173
 
 [[ports]]
-localPort = 45569
+localPort = 46133
 externalPort = 3003
 
 [[ports]]
-localPort = 45991
+localPort = 46229
 externalPort = 6000
 
 [workflows]

@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterAll } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import request from 'supertest';
 import express, { Request, Response, NextFunction } from 'express';
 import { db } from '@db';
 import { eq } from 'drizzle-orm';
-import { messages, channels, users } from '@db/schema';
+import { messages as messagesTable, channels, users } from '@db/schema';
 import messagesRouter from '../routes/messages';
 
 describe('Messages API', () => {
@@ -22,7 +22,7 @@ describe('Messages API', () => {
     });
 
     // Clean up test data
-    await db.delete(messages);
+    await db.delete(messagesTable);
     await db.delete(channels);
     await db.delete(users);
 
@@ -41,9 +41,9 @@ describe('Messages API', () => {
     }).returning();
   });
 
-  afterAll(async () => {
+  afterEach(async () => {
     // Final cleanup
-    await db.delete(messages);
+    await db.delete(messagesTable);
     await db.delete(channels);
     await db.delete(users);
   });
@@ -76,10 +76,126 @@ describe('Messages API', () => {
         .expect('Content-Type', /json/)
         .expect(200);
 
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body).toHaveLength(0);
+      expect(response.body).toHaveProperty('messages');
+      expect(Array.isArray(response.body.messages)).toBe(true);
+      expect(response.body.messages).toHaveLength(0);
     });
 
+    it('should filter messages by timestamp range', async () => {
+      // Add auth middleware first
+      app.use((req: Request, _res: Response, next: NextFunction) => {
+        (req as any).user = testUser;
+        next();
+      });
+
+      // Then mount the router
+      app.use('/api/channels', messagesRouter);
+
+      // Create messages with fixed timestamps for consistent testing
+      const baseDate = new Date('2025-01-10T12:00:00Z');
+      const twoDaysAgo = new Date(baseDate);
+      const yesterday = new Date(baseDate);
+
+      twoDaysAgo.setDate(baseDate.getDate() - 2); // 2025-01-08
+      yesterday.setDate(baseDate.getDate() - 1);   // 2025-01-09
+
+      // Create messages in chronological order
+      await db.insert(messagesTable).values([
+        {
+          content: 'Message from two days ago',
+          channelId: testChannel.id,
+          userId: testUser.id,
+          deleted: false,
+          createdAt: twoDaysAgo,
+          updatedAt: twoDaysAgo
+        },
+        {
+          content: 'Message from yesterday',
+          channelId: testChannel.id,
+          userId: testUser.id,
+          deleted: false,
+          createdAt: yesterday,
+          updatedAt: yesterday
+        }
+      ]);
+
+      // Test range query - messages between two days ago and yesterday (inclusive)
+      const rangeResponse = await request(app)
+        .get(`/api/channels/${testChannel.id}/messages`)
+        .query({
+          after: twoDaysAgo.toISOString(),
+          before: baseDate.toISOString()
+        })
+        .expect('Content-Type', /json/)
+        .expect(200);
+
+      expect(rangeResponse.body).toHaveProperty('messages');
+      expect(Array.isArray(rangeResponse.body.messages)).toBe(true);
+      expect(rangeResponse.body.messages).toHaveLength(2);
+      // Messages should be in reverse chronological order
+      expect(rangeResponse.body.messages[0].content).toBe('Message from yesterday');
+      expect(rangeResponse.body.messages[1].content).toBe('Message from two days ago');
+    });
+
+    it('should support cursor-based pagination', async () => {
+      // Add auth middleware first
+      app.use((req: Request, _res: Response, next: NextFunction) => {
+        (req as any).user = testUser;
+        next();
+      });
+
+      // Then mount the router
+      app.use('/api/channels', messagesRouter);
+
+      // Create multiple test messages with different timestamps
+      const baseDate = new Date('2025-01-10T12:00:00Z');
+      const messages = await Promise.all(
+        Array.from({ length: 25 }, (_, i) => {
+          const date = new Date(baseDate);
+          date.setMinutes(date.getMinutes() - i);
+          return db.insert(messagesTable).values({
+            content: `Test message ${i + 1}`,
+            channelId: testChannel.id,
+            userId: testUser.id,
+            deleted: false,
+            createdAt: date,
+            updatedAt: date
+          }).returning();
+        })
+      );
+
+      // Flatten messages array since each insert returns an array
+      const allMessages = messages.flat();
+
+      // Get first page
+      const firstPageResponse = await request(app)
+        .get(`/api/channels/${testChannel.id}/messages`)
+        .query({ limit: 10 })
+        .expect('Content-Type', /json/)
+        .expect(200);
+
+      expect(firstPageResponse.body).toHaveProperty('messages');
+      expect(Array.isArray(firstPageResponse.body.messages)).toBe(true);
+      expect(firstPageResponse.body.messages).toHaveLength(10);
+      expect(firstPageResponse.body).toHaveProperty('nextCursor');
+      expect(firstPageResponse.body.messages[0].content).toBe('Test message 1');
+
+      // Get next page using cursor
+      const secondPageResponse = await request(app)
+        .get(`/api/channels/${testChannel.id}/messages`)
+        .query({
+          limit: 10,
+          cursor: firstPageResponse.body.nextCursor
+        })
+        .expect('Content-Type', /json/)
+        .expect(200);
+
+      expect(secondPageResponse.body).toHaveProperty('messages');
+      expect(Array.isArray(secondPageResponse.body.messages)).toBe(true);
+      expect(secondPageResponse.body.messages).toHaveLength(10);
+      expect(secondPageResponse.body).toHaveProperty('nextCursor');
+      expect(secondPageResponse.body.messages[0].content).toBe('Test message 11');
+    });
     it('should return list of messages when messages exist', async () => {
       // Add auth middleware first
       app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -91,7 +207,7 @@ describe('Messages API', () => {
       app.use('/api/channels', messagesRouter);
 
       // Create test message with timestamp
-      const [message] = await db.insert(messages).values({
+      const [message] = await db.insert(messagesTable).values({
         content: 'Test message',
         channelId: testChannel.id,
         userId: testUser.id,
@@ -105,9 +221,10 @@ describe('Messages API', () => {
         .expect('Content-Type', /json/)
         .expect(200);
 
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body).toHaveLength(1);
-      expect(response.body[0]).toEqual(expect.objectContaining({
+      expect(response.body).toHaveProperty('messages');
+      expect(Array.isArray(response.body.messages)).toBe(true);
+      expect(response.body.messages).toHaveLength(1);
+      expect(response.body.messages[0]).toEqual(expect.objectContaining({
         id: message.id,
         content: 'Test message',
         channelId: testChannel.id,
@@ -129,7 +246,7 @@ describe('Messages API', () => {
       const messagePromises = Array.from({ length: 25 }, (_, i) => {
         const date = new Date();
         date.setMinutes(date.getMinutes() - i); // Each message 1 minute apart
-        return db.insert(messages).values({
+        return db.insert(messagesTable).values({
           content: `Test message ${i + 1}`,
           channelId: testChannel.id,
           userId: testUser.id,
@@ -142,14 +259,15 @@ describe('Messages API', () => {
       await Promise.all(messagePromises);
 
       const response = await request(app)
-        .get(`/api/channels/${testChannel.id}/messages?limit=10&offset=0`)
+        .get(`/api/channels/${testChannel.id}/messages`)
+        .query({ limit: 10 })
         .expect('Content-Type', /json/)
         .expect(200);
 
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body).toHaveLength(10);
+      expect(Array.isArray(response.body.messages)).toBe(true);
+      expect(response.body.messages).toHaveLength(10);
       // Most recent messages should appear first
-      expect(response.body[0].content).toBe('Test message 1');
+      expect(response.body.messages[0].content).toBe('Test message 1');
     });
 
     it('should handle invalid channel ID', async () => {
@@ -168,139 +286,6 @@ describe('Messages API', () => {
         .expect(404);
 
       expect(response.body).toHaveProperty('error', 'Channel not found');
-    });
-
-    it('should filter messages by timestamp range', async () => {
-      // Add auth middleware first
-      app.use((req: Request, _res: Response, next: NextFunction) => {
-        (req as any).user = testUser;
-        next();
-      });
-
-      // Then mount the router
-      app.use('/api/channels', messagesRouter);
-
-      // Create messages with different timestamps
-      const now = new Date();
-      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
-
-      await db.insert(messages).values([
-        {
-          content: 'Message from now',
-          channelId: testChannel.id,
-          userId: testUser.id,
-          deleted: false,
-          createdAt: now,
-          updatedAt: now
-        },
-        {
-          content: 'Message from yesterday',
-          channelId: testChannel.id,
-          userId: testUser.id,
-          deleted: false,
-          createdAt: yesterday,
-          updatedAt: yesterday
-        },
-        {
-          content: 'Message from two days ago',
-          channelId: testChannel.id,
-          userId: testUser.id,
-          deleted: false,
-          createdAt: twoDaysAgo,
-          updatedAt: twoDaysAgo
-        }
-      ]).returning();
-
-      // Test after filter
-      const afterResponse = await request(app)
-        .get(`/api/channels/${testChannel.id}/messages`)
-        .query({ after: yesterday.toISOString() })
-        .expect('Content-Type', /json/)
-        .expect(200);
-
-      expect(Array.isArray(afterResponse.body)).toBe(true);
-      expect(afterResponse.body).toHaveLength(1);
-      expect(afterResponse.body[0].content).toBe('Message from now');
-
-      // Test before filter
-      const beforeResponse = await request(app)
-        .get(`/api/channels/${testChannel.id}/messages`)
-        .query({ before: yesterday.toISOString() })
-        .expect('Content-Type', /json/)
-        .expect(200);
-
-      expect(Array.isArray(beforeResponse.body)).toBe(true);
-      expect(beforeResponse.body).toHaveLength(1);
-      expect(beforeResponse.body[0].content).toBe('Message from two days ago');
-
-      // Test both before and after filters
-      const rangeResponse = await request(app)
-        .get(`/api/channels/${testChannel.id}/messages`)
-        .query({
-          after: twoDaysAgo.toISOString(),
-          before: now.toISOString()
-        })
-        .expect('Content-Type', /json/)
-        .expect(200);
-
-      expect(Array.isArray(rangeResponse.body)).toBe(true);
-      expect(rangeResponse.body).toHaveLength(2);
-      expect(rangeResponse.body[0].content).toBe('Message from yesterday');
-    });
-
-    it('should support cursor-based pagination', async () => {
-      // Add auth middleware first
-      app.use((req: Request, _res: Response, next: NextFunction) => {
-        (req as any).user = testUser;
-        next();
-      });
-
-      // Then mount the router
-      app.use('/api/channels', messagesRouter);
-
-      // Create multiple test messages with different timestamps
-      const messages = await Promise.all(
-        Array.from({ length: 25 }, (_, i) => {
-          const date = new Date();
-          date.setMinutes(date.getMinutes() - i);
-          return db.insert(messages).values({
-            content: `Test message ${i + 1}`,
-            channelId: testChannel.id,
-            userId: testUser.id,
-            deleted: false,
-            createdAt: date,
-            updatedAt: date
-          }).returning();
-        })
-      );
-
-      // Get first page
-      const firstPageResponse = await request(app)
-        .get(`/api/channels/${testChannel.id}/messages`)
-        .query({ limit: 10 })
-        .expect('Content-Type', /json/)
-        .expect(200);
-
-      expect(Array.isArray(firstPageResponse.body.messages)).toBe(true);
-      expect(firstPageResponse.body.messages).toHaveLength(10);
-      expect(firstPageResponse.body).toHaveProperty('nextCursor');
-      expect(firstPageResponse.body.messages[0].content).toBe('Test message 1');
-
-      // Get next page using cursor
-      const secondPageResponse = await request(app)
-        .get(`/api/channels/${testChannel.id}/messages`)
-        .query({
-          limit: 10,
-          cursor: firstPageResponse.body.nextCursor
-        })
-        .expect('Content-Type', /json/)
-        .expect(200);
-
-      expect(Array.isArray(secondPageResponse.body.messages)).toBe(true);
-      expect(secondPageResponse.body.messages).toHaveLength(10);
-      expect(secondPageResponse.body).toHaveProperty('nextCursor');
-      expect(secondPageResponse.body.messages[0].content).toBe('Test message 11');
     });
   });
 
@@ -337,8 +322,8 @@ describe('Messages API', () => {
       // Verify message was actually created in database
       const [dbMessage] = await db
         .select()
-        .from(messages)
-        .where(eq(messages.id, response.body.id));
+        .from(messagesTable)
+        .where(eq(messagesTable.id, response.body.id));
 
       expect(dbMessage).toBeTruthy();
       expect(dbMessage.content).toBe(messageData.content);
@@ -379,7 +364,7 @@ describe('Messages API', () => {
       app.use('/api/channels', messagesRouter);
 
       // Create a test message
-      [testMessage] = await db.insert(messages).values({
+      [testMessage] = await db.insert(messagesTable).values({
         content: 'Original message',
         channelId: testChannel.id,
         userId: testUser.id,
@@ -411,8 +396,8 @@ describe('Messages API', () => {
       // Verify message was actually updated in database
       const [dbMessage] = await db
         .select()
-        .from(messages)
-        .where(eq(messages.id, testMessage.id));
+        .from(messagesTable)
+        .where(eq(messagesTable.id, testMessage.id));
 
       expect(dbMessage.content).toBe(updateData.content);
     });
@@ -427,7 +412,7 @@ describe('Messages API', () => {
       }).returning();
 
       // Create message from other user
-      const [otherMessage] = await db.insert(messages).values({
+      const [otherMessage] = await db.insert(messagesTable).values({
         content: 'Message from other user',
         channelId: testChannel.id,
         userId: otherUser.id,
@@ -464,7 +449,7 @@ describe('Messages API', () => {
       app.use('/api/channels', messagesRouter);
 
       // Create a test message
-      [testMessage] = await db.insert(messages).values({
+      [testMessage] = await db.insert(messagesTable).values({
         content: 'Message to delete',
         channelId: testChannel.id,
         userId: testUser.id,
@@ -485,8 +470,8 @@ describe('Messages API', () => {
       // Verify message was soft deleted in database
       const [dbMessage] = await db
         .select()
-        .from(messages)
-        .where(eq(messages.id, testMessage.id));
+        .from(messagesTable)
+        .where(eq(messagesTable.id, testMessage.id));
 
       expect(dbMessage.deleted).toBe(true);
     });
@@ -501,7 +486,7 @@ describe('Messages API', () => {
       }).returning();
 
       // Create message from other user
-      const [otherMessage] = await db.insert(messages).values({
+      const [otherMessage] = await db.insert(messagesTable).values({
         content: 'Message from other user',
         channelId: testChannel.id,
         userId: otherUser.id,

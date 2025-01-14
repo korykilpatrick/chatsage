@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '@db';
 import { messages, channels } from '@db/schema';
-import { and, eq, desc, lt, gt, sql } from 'drizzle-orm';
+import { and, eq, desc, lt, gt, lte, gte, sql } from 'drizzle-orm';
 
 const router = Router();
 
@@ -70,23 +70,38 @@ router.get('/:channelId/messages', requireAuth, async (req: Request, res: Respon
       conditions.push(eq(messages.deleted, false));
     }
 
-    if (before) {
-      conditions.push(lt(messages.createdAt, before));
-    }
-
-    if (after) {
-      conditions.push(gt(messages.createdAt, after));
-    }
-
-    if (cursor) {
-      const [decodedTimestamp, decodedId] = Buffer.from(cursor, 'base64')
-        .toString()
-        .split(':')
-        .map(part => parseInt(part));
-
+    // Handle timestamp filtering
+    if (before && after) {
       conditions.push(
-        sql`(${messages.createdAt}, ${messages.id}) < (${new Date(decodedTimestamp)}, ${decodedId})`
+        and(
+          lte(messages.createdAt, before),
+          gte(messages.createdAt, after)
+        )
       );
+    } else {
+      if (before) {
+        conditions.push(lte(messages.createdAt, before));
+      }
+      if (after) {
+        conditions.push(gte(messages.createdAt, after));
+      }
+    }
+
+    // Handle cursor-based pagination
+    if (cursor) {
+      try {
+        const [timestamp, id] = Buffer.from(cursor, 'base64')
+          .toString()
+          .split(':');
+        const cursorDate = new Date(parseInt(timestamp));
+        const cursorId = parseInt(id);
+
+        conditions.push(
+          sql`(${messages.createdAt}, ${messages.id}) < (${cursorDate}, ${cursorId})`
+        );
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid cursor format' });
+      }
     }
 
     // Execute query with all conditions
