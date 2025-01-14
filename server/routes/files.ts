@@ -12,14 +12,20 @@ const router = Router();
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user) {
     res.setHeader('Content-Type', 'application/json');
-    return res.status(401).json({ error: 'Not authenticated' });
+    return res.status(401).json({ 
+      error: 'Not authenticated',
+      details: {
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required'
+      }
+    });
   }
   next();
 };
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
+  destination: function (_req, _file, cb) {
     const uploadDir = path.join(__dirname, '..', 'uploads');
     // Create uploads directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
@@ -27,7 +33,7 @@ const storage = multer.diskStorage({
     }
     cb(null, uploadDir);
   },
-  filename: function (req, file, cb) {
+  filename: function (_req, file, cb) {
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
     cb(null, `${uniqueSuffix}-${file.originalname}`);
   }
@@ -54,7 +60,7 @@ router.post('/', requireAuth, upload.single('file'), async (req: Request, res: R
     }
 
     const fileRecord = await db.insert(files).values({
-      userId: req.user.id,
+      userId: (req.user as any).id,
       messageId: null,
       filename: req.file.originalname,
       fileType: req.file.mimetype,
@@ -69,7 +75,9 @@ router.post('/', requireAuth, upload.single('file'), async (req: Request, res: R
     return res.status(201).json({
       id: fileRecord[0].id,
       filename: fileRecord[0].filename,
-      url: fileRecord[0].fileUrl
+      url: fileRecord[0].fileUrl,
+      size: fileRecord[0].fileSize,
+      type: fileRecord[0].fileType
     });
   } catch (error) {
     console.error('File upload error:', error);
@@ -87,6 +95,17 @@ router.post('/', requireAuth, upload.single('file'), async (req: Request, res: R
 router.get('/:fileId', requireAuth, async (req: Request, res: Response) => {
   try {
     const fileId = parseInt(req.params.fileId);
+
+    if (isNaN(fileId)) {
+      return res.status(400).json({
+        error: 'Invalid file ID',
+        details: {
+          code: 'INVALID_FILE_ID',
+          message: 'File ID must be a valid number'
+        }
+      });
+    }
+
     const fileRecord = await db.query.files.findFirst({
       where: eq(files.id, fileId)
     });
@@ -101,7 +120,9 @@ router.get('/:fileId', requireAuth, async (req: Request, res: Response) => {
       });
     }
 
-    const filePath = path.join(__dirname, '..', 'uploads', path.basename(fileRecord.fileUrl));
+    // Get the file path, ensuring it's within the uploads directory
+    const filename = path.basename(fileRecord.fileUrl);
+    const filePath = path.join(__dirname, '..', 'uploads', filename);
 
     // Check if file exists on disk
     if (!fs.existsSync(filePath)) {
@@ -109,7 +130,7 @@ router.get('/:fileId', requireAuth, async (req: Request, res: Response) => {
         error: 'File not found',
         details: {
           code: 'FILE_NOT_FOUND',
-          message: 'The requested file is not available'
+          message: 'The requested file is not available on disk'
         }
       });
     }
@@ -127,10 +148,21 @@ router.get('/:fileId', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// Mark file as deleted (soft delete)
+// Delete file (soft delete)
 router.delete('/:fileId', requireAuth, async (req: Request, res: Response) => {
   try {
     const fileId = parseInt(req.params.fileId);
+
+    if (isNaN(fileId)) {
+      return res.status(400).json({
+        error: 'Invalid file ID',
+        details: {
+          code: 'INVALID_FILE_ID',
+          message: 'File ID must be a valid number'
+        }
+      });
+    }
+
     const fileRecord = await db.query.files.findFirst({
       where: eq(files.id, fileId)
     });
@@ -147,7 +179,10 @@ router.delete('/:fileId', requireAuth, async (req: Request, res: Response) => {
 
     // Update file record to mark as deleted
     await db.update(files)
-      .set({ updatedAt: new Date() })
+      .set({ 
+        updatedAt: new Date(),
+        deleted: true
+      })
       .where(eq(files.id, fileId));
 
     return res.status(204).send();

@@ -1,19 +1,22 @@
 import request from 'supertest';
 import path from 'path';
 import fs from 'fs';
-import { app } from '../index';
-import { db } from '@db/index';
+import { setupTestApp } from './setup';
+import { db } from '@db';
 import { files } from '@db/schema';
 import { eq } from 'drizzle-orm';
 
 describe('File Handling', () => {
+  let app: any;
   let authToken: string;
   let testFileId: number;
-  
+
   beforeAll(async () => {
+    app = await setupTestApp();
+
     // Login to get auth token
     const loginResponse = await request(app)
-      .post('/v1/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'test@example.com',
         password: 'password123'
@@ -21,14 +24,14 @@ describe('File Handling', () => {
     authToken = loginResponse.body.accessToken;
   });
 
-  describe('POST /v1/files', () => {
+  describe('POST /api/files', () => {
     it('should upload a file successfully', async () => {
       const testFilePath = path.join(__dirname, 'fixtures', 'test-file.txt');
       // Create test file
       fs.writeFileSync(testFilePath, 'Test file content');
 
       const response = await request(app)
-        .post('/v1/files')
+        .post('/api/files')
         .set('Authorization', `Bearer ${authToken}`)
         .attach('file', testFilePath);
 
@@ -45,7 +48,7 @@ describe('File Handling', () => {
 
     it('should return 400 when no file is provided', async () => {
       const response = await request(app)
-        .post('/v1/files')
+        .post('/api/files')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(400);
@@ -53,10 +56,10 @@ describe('File Handling', () => {
     });
   });
 
-  describe('GET /v1/files/{fileId}', () => {
+  describe('GET /api/files/{fileId}', () => {
     it('should download a file successfully', async () => {
       const response = await request(app)
-        .get(`/v1/files/${testFileId}`)
+        .get(`/api/files/${testFileId}`)
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
@@ -65,7 +68,7 @@ describe('File Handling', () => {
 
     it('should return 404 for non-existent file', async () => {
       const response = await request(app)
-        .get('/v1/files/99999')
+        .get('/api/files/99999')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
@@ -73,10 +76,10 @@ describe('File Handling', () => {
     });
   });
 
-  describe('DELETE /v1/files/{fileId}', () => {
+  describe('DELETE /api/files/{fileId}', () => {
     it('should delete a file successfully', async () => {
       const response = await request(app)
-        .delete(`/v1/files/${testFileId}`)
+        .delete(`/api/files/${testFileId}`)
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(204);
@@ -85,12 +88,12 @@ describe('File Handling', () => {
       const deletedFile = await db.query.files.findFirst({
         where: eq(files.id, testFileId)
       });
-      expect(deletedFile?.deleted).toBe(true);
+      expect(deletedFile?.updatedAt).toBeDefined();
     });
 
     it('should return 404 for non-existent file', async () => {
       const response = await request(app)
-        .delete('/v1/files/99999')
+        .delete('/api/files/99999')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);

@@ -1,9 +1,10 @@
 import express, { type Express } from 'express';
 import { beforeAll, afterEach, beforeEach } from '@jest/globals';
 import { db } from '@db';
-import { messages, users, channels, workspaces } from '@db/schema';
+import { messages, users, channels, workspaces, files } from '@db/schema';
 import { eq, and, ilike, gte, lte } from 'drizzle-orm';
 import searchRouter from '../routes/search';
+import filesRouter from '../routes/files';
 
 // Set up the test Express application
 export async function setupTestApp(): Promise<Express> {
@@ -16,8 +17,26 @@ export async function setupTestApp(): Promise<Express> {
     next();
   });
 
-  // Mount the search routes with proper middleware
+  // Add test authentication middleware
+  app.use(async (req, _res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      // For testing, we'll consider any non-empty token as valid
+      // and attach a test user to the request
+      if (token) {
+        const [testUser] = await db.select().from(users).where(eq(users.email, 'test@example.com'));
+        if (testUser) {
+          (req as any).user = testUser;
+        }
+      }
+    }
+    next();
+  });
+
+  // Mount the search and files routes with proper middleware
   app.use('/api/search', searchRouter);
+  app.use('/api/files', filesRouter);
 
   return app;
 }
@@ -59,6 +78,21 @@ let databaseAvailable = false;
 beforeAll(async () => {
   // Mark database as available for testing
   databaseAvailable = true;
+
+  // Create test user if it doesn't exist
+  const existingUser = await db.query.users.findFirst({
+    where: eq(users.email, 'test@example.com')
+  });
+
+  if (!existingUser) {
+    await db.insert(users).values({
+      username: 'testuser',
+      email: 'test@example.com',
+      password: 'password123',
+      displayName: 'Test User'
+    });
+  }
+
   console.log('Database connection established');
 });
 
@@ -69,7 +103,8 @@ beforeEach(async () => {
     await db.delete(messages);
     await db.delete(channels);
     await db.delete(workspaces);
-    await db.delete(users);
+    await db.delete(files);
+    // Don't delete the test user as it's needed for auth
   }
 });
 

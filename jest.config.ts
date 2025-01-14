@@ -7,7 +7,9 @@ const config: Config.InitialOptions = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/client/src/$1',
     '^@db/(.*)$': '<rootDir>/db/$1',
-    '^@db$': '<rootDir>/db/index.ts'
+    '^@db$': '<rootDir>/db/index.ts',
+    '^@/vite$': '<rootDir>/server/__mocks__/vite.ts',
+    '^./vite$': '<rootDir>/server/__mocks__/vite.ts'
   },
   setupFilesAfterEnv: ['<rootDir>/server/__tests__/setup.ts'],
   testTimeout: 10000,
@@ -15,10 +17,7 @@ const config: Config.InitialOptions = {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: './tsconfig.json',
       useESM: true,
-      isolatedModules: true,
-      diagnostics: {
-        warnOnly: true // This will prevent TypeScript errors from failing tests
-      }
+      isolatedModules: true
     }]
   },
   extensionsToTreatAsEsm: ['.ts'],
