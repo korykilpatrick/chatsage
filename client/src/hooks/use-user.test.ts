@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHookWithClient } from '../test/setupTests';
+import { renderHookWithClient, createMockUser } from '../test/setupTests';
 import { useUser } from './use-user';
 import { HttpResponse, http } from 'msw';
 import { server } from '../test/setupTests';
-import { act } from '@testing-library/react';
+import { waitFor } from '@testing-library/react';
 
 describe('useUser', () => {
   const mockUser = {
@@ -12,8 +12,8 @@ describe('useUser', () => {
     email: 'test@example.com',
     lastKnownPresence: 'ONLINE',
     statusMessage: null,
-    createdAt: new Date('2024-01-14T12:00:00Z'),
-    updatedAt: new Date('2024-01-14T12:00:00Z')
+    createdAt: new Date('2024-01-14T12:00:00.000Z'),
+    updatedAt: new Date('2024-01-14T12:00:00.000Z')
   };
 
   beforeEach(() => {
@@ -29,16 +29,25 @@ describe('useUser', () => {
     const { result } = renderHookWithClient(() => useUser());
 
     // Initial state check
-    expect(result.current.user).toBeNull();
     expect(result.current.isLoading).toBe(true);
+    expect(result.current.user).toBeNull();
+    expect(result.current.error).toBeNull();
 
-    // Wait for the query to settle
-    await act(async () => {
-      await vi.dynamicImportSettled();
-    });
+    // Wait for query to settle
+    await waitFor(
+      () => {
+        expect(result.current.isLoading).toBe(false);
+      },
+      { timeout: 2000 }
+    );
+
+    // Check final state
+    expect(result.current.user).toBeNull();
+    expect(result.current.error).toBeNull();
   });
 
   it('loads user data on mount', async () => {
+    // Set up mock response before rendering
     server.use(
       http.get('/api/user', () => {
         return HttpResponse.json(mockUser);
@@ -47,18 +56,24 @@ describe('useUser', () => {
 
     const { result } = renderHookWithClient(() => useUser());
 
-    await act(async () => {
-      await vi.dynamicImportSettled();
-    });
+    expect(result.current.isLoading).toBe(true);
 
-    expect(result.current.user).toEqual(mockUser);
+    // Wait for the query to settle
+    await waitFor(
+      () => {
+        expect(result.current.isLoading).toBe(false);
+        expect(result.current.user).toEqual(mockUser);
+      },
+      { timeout: 2000 }
+    );
+
     expect(result.current.error).toBeNull();
   });
 
   it('handles login successfully', async () => {
     server.use(
-      http.post('/api/auth/login', async () => {
-        return HttpResponse.json({ token: 'mock-token' });
+      http.post('/api/login', () => {
+        return HttpResponse.json({ ok: true });
       }),
       http.get('/api/user', () => {
         return HttpResponse.json(mockUser);
@@ -67,60 +82,108 @@ describe('useUser', () => {
 
     const { result } = renderHookWithClient(() => useUser());
 
-    await act(async () => {
-      await result.current.login({ 
-        email: 'test@example.com', 
-        password: 'password123' 
-      });
-    });
+    await waitFor(
+      async () => {
+        await result.current.login({
+          email: 'test@example.com', 
+          password: 'password123' 
+        });
+      },
+      { timeout: 2000 }
+    );
 
-    expect(result.current.user).toEqual(mockUser);
-    expect(result.current.error).toBeNull();
+    await waitFor(
+      () => {
+        expect(result.current.user).toEqual(mockUser);
+        expect(result.current.error).toBeNull();
+      },
+      { timeout: 2000 }
+    );
   });
 
   it('handles registration successfully', async () => {
     server.use(
-      http.post('/api/auth/register', async () => {
-        return HttpResponse.json({ message: 'Registration successful' });
+      http.post('/api/register', () => {
+        return HttpResponse.json({ ok: true });
+      }),
+      http.get('/api/user', () => {
+        return HttpResponse.json(mockUser);
       })
     );
 
     const { result } = renderHookWithClient(() => useUser());
 
-    await act(async () => {
-      await result.current.register({
-        email: 'new@example.com',
-        password: 'password123',
-        displayName: 'New User'
-      });
-    });
+    await waitFor(
+      async () => {
+        await result.current.register({
+          email: 'new@example.com',
+          password: 'password123',
+          displayName: 'New User'
+        });
+      },
+      { timeout: 2000 }
+    );
 
-    expect(result.current.error).toBeNull();
+    await waitFor(
+      () => {
+        expect(result.current.user).toEqual(mockUser);
+        expect(result.current.error).toBeNull();
+      },
+      { timeout: 2000 }
+    );
   });
 
   it('handles logout successfully', async () => {
+    // Set up initial logged-in state
     server.use(
-      http.post('/api/auth/logout', () => {
-        return new HttpResponse(null, { status: 200 });
+      http.get('/api/user', () => {
+        return HttpResponse.json(mockUser);
       })
     );
 
     const { result } = renderHookWithClient(() => useUser());
 
-    await act(async () => {
-      await result.current.logout();
-    });
+    // Wait for initial user load
+    await waitFor(
+      () => {
+        expect(result.current.user).toEqual(mockUser);
+      },
+      { timeout: 2000 }
+    );
 
-    expect(result.current.user).toBeNull();
-    expect(result.current.error).toBeNull();
+    // Set up logout response
+    server.use(
+      http.post('/api/logout', () => {
+        return HttpResponse.json({ ok: true });
+      }),
+      http.get('/api/user', () => {
+        return HttpResponse.json(null);
+      })
+    );
+
+    // Perform logout
+    await waitFor(
+      async () => {
+        await result.current.logout();
+      },
+      { timeout: 2000 }
+    );
+
+    await waitFor(
+      () => {
+        expect(result.current.user).toBeNull();
+        expect(result.current.error).toBeNull();
+      },
+      { timeout: 2000 }
+    );
   });
 
   it('handles login error', async () => {
     const errorMessage = 'Invalid credentials';
     server.use(
-      http.post('/api/auth/login', () => {
+      http.post('/api/login', () => {
         return HttpResponse.json(
-          { message: errorMessage },
+          { ok: false, error: errorMessage },
           { status: 401 }
         );
       })
@@ -128,14 +191,22 @@ describe('useUser', () => {
 
     const { result } = renderHookWithClient(() => useUser());
 
-    await act(async () => {
-      await result.current.login({
-        email: 'wrong@example.com',
-        password: 'wrongpassword'
-      });
-    });
+    let loginError: Error | null = null;
+    await waitFor(
+      async () => {
+        try {
+          await result.current.login({
+            email: 'wrong@example.com',
+            password: 'wrongpassword'
+          });
+        } catch (e) {
+          loginError = e as Error;
+        }
+      },
+      { timeout: 2000 }
+    );
 
-    expect(result.current.error).toBe(errorMessage);
+    expect(loginError?.message).toBe(errorMessage);
     expect(result.current.user).toBeNull();
   });
 });

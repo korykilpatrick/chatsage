@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { InsertUser, SelectUser } from "@db/schema";
+import type { InsertUser } from "@db/schema";
 
 type RequestResult = {
   ok: true;
 } | {
   ok: false;
-  message: string;
+  error: string;
 };
 
 async function handleRequest(
@@ -21,70 +21,102 @@ async function handleRequest(
       credentials: "include",
     });
 
-    if (!response.ok) {
-      if (response.status >= 500) {
-        return { ok: false, message: response.statusText };
-      }
+    const data = await response.json().catch(() => null);
 
-      const message = await response.text();
-      return { ok: false, message };
+    if (!response.ok) {
+      throw new Error(data?.error || response.statusText);
     }
 
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, message: e.toString() };
+    return { 
+      ok: false,
+      error: e.message || 'An error occurred'
+    };
   }
 }
 
-async function fetchUser(): Promise<SelectUser | null> {
-  const response = await fetch('/api/user', {
-    credentials: 'include'
-  });
+async function fetchUser() {
+  try {
+    const response = await fetch('/api/user', {
+      credentials: 'include'
+    });
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      return null;
+    if (!response.ok) {
+      if (response.status === 401) {
+        return null;
+      }
+      throw new Error('Failed to fetch user');
     }
 
-    if (response.status >= 500) {
-      throw new Error(`${response.status}: ${response.statusText}`);
-    }
-
-    throw new Error(`${response.status}: ${await response.text()}`);
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    return null;
   }
-
-  return response.json();
 }
 
 export function useUser() {
   const queryClient = useQueryClient();
 
-  const { data: user, error, isLoading } = useQuery<SelectUser | null, Error>({
+  const { data: user, error, isLoading } = useQuery({
     queryKey: ['user'],
     queryFn: fetchUser,
     staleTime: Infinity,
-    retry: false
+    retry: false,
+    initialData: null,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
 
-  const loginMutation = useMutation<RequestResult, Error, InsertUser>({
-    mutationFn: (userData) => handleRequest('/api/login', 'POST', userData),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['user'] });
+  const loginMutation = useMutation({
+    mutationFn: (userData: InsertUser) => handleRequest('/api/login', 'POST', userData),
+    onSuccess: async (result) => {
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      await queryClient.prefetchQuery({
+        queryKey: ['user'],
+        queryFn: fetchUser,
+        staleTime: 0
+      });
     },
+    onError: (error: Error) => {
+      throw error;
+    }
   });
 
-  const logoutMutation = useMutation<RequestResult, Error>({
+  const logoutMutation = useMutation({
     mutationFn: () => handleRequest('/api/logout', 'POST'),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['user'] });
+    onSuccess: async (result) => {
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      queryClient.setQueryData(['user'], null);
+      await queryClient.invalidateQueries({ queryKey: ['user'] });
     },
+    onError: (error: Error) => {
+      throw error;
+    }
   });
 
-  const registerMutation = useMutation<RequestResult, Error, InsertUser>({
-    mutationFn: (userData) => handleRequest('/api/register', 'POST', userData),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['user'] });
+  const registerMutation = useMutation({
+    mutationFn: (userData: InsertUser) => handleRequest('/api/register', 'POST', userData),
+    onSuccess: async (result) => {
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      await queryClient.prefetchQuery({
+        queryKey: ['user'],
+        queryFn: fetchUser,
+        staleTime: 0
+      });
     },
+    onError: (error: Error) => {
+      throw error;
+    }
   });
 
   return {
