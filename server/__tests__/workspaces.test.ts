@@ -6,20 +6,23 @@ import { eq } from 'drizzle-orm';
 
 describe('Workspace Management', () => {
   let app: any;
-  let cookie: string;
+  let agent: request.SuperAgentTest;
 
   beforeAll(async () => {
     app = await setupTestApp();
+    agent = request.agent(app);
 
-    // Login to get session cookie
-    const loginResponse = await request(app)
+    // Login before running tests
+    const response = await agent
       .post('/api/login')
       .send({
         username: 'testuser',
         password: 'password123'
       });
 
-    cookie = loginResponse.headers['set-cookie'][0];
+    // Verify login was successful
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('message', 'Login successful');
   });
 
   describe('POST /api/workspaces', () => {
@@ -29,13 +32,12 @@ describe('Workspace Management', () => {
         description: 'A workspace for testing'
       };
 
-      const response = await request(app)
+      const response = await agent
         .post('/api/workspaces')
-        .set('Cookie', cookie)
         .send(workspaceData)
-        .expect('Content-Type', /json/);
+        .expect('Content-Type', /json/)
+        .expect(201);
 
-      expect(response.status).toBe(201);
       expect(response.body).toHaveProperty('id');
       expect(response.body.name).toBe(workspaceData.name);
       expect(response.body.description).toBe(workspaceData.description);
@@ -51,32 +53,32 @@ describe('Workspace Management', () => {
     });
 
     it('should return 400 when workspace name is missing', async () => {
-      const response = await request(app)
+      const response = await agent
         .post('/api/workspaces')
-        .set('Cookie', cookie)
         .send({
           description: 'Missing name'
         })
-        .expect('Content-Type', /json/);
+        .expect('Content-Type', /json/)
+        .expect(400);
 
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('error');
-      expect(response.body.error).toBe('Invalid request');
+      expect(response.body).toHaveProperty('error', 'Invalid request');
       expect(response.body.message).toBe('Workspace name is required');
     });
 
     it('should return 401 when not authenticated', async () => {
-      const response = await request(app)
+      // Use a new agent without authentication
+      const unauthenticatedAgent = request(app);
+
+      const response = await unauthenticatedAgent
         .post('/api/workspaces')
         .send({
           name: 'Unauthorized Workspace',
           description: 'This should fail'
         })
-        .expect('Content-Type', /json/);
+        .expect('Content-Type', /json/)
+        .expect(401);
 
-      expect(response.status).toBe(401);
-      expect(response.body).toHaveProperty('error');
-      expect(response.body.error).toBe('Not authenticated');
+      expect(response.body).toHaveProperty('error', 'Not authenticated');
     });
   });
 });

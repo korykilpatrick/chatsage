@@ -38,10 +38,10 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
       })
       .returning();
 
-    return res.status(201).json(workspace);
+    res.status(201).json(workspace);
   } catch (error) {
     console.error('Workspace creation error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       error: 'Internal server error',
       message: 'Failed to create workspace'
     });

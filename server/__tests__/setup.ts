@@ -1,4 +1,4 @@
-import express, { type Express } from 'express';
+import express, { type Express, Request, Response, NextFunction } from 'express';
 import { beforeAll, afterEach, beforeEach } from '@jest/globals';
 import { db } from '@db';
 import { messages, users, channels, workspaces, files } from '@db/schema';
@@ -13,26 +13,31 @@ import session from 'express-session';
 export async function setupTestApp(): Promise<Express> {
   const app = express();
 
-  // Setup session before other middleware
+  // Setup session middleware with test configuration
   app.use(session({
     secret: 'test-secret',
     resave: false,
-    saveUninitialized: false,
-    cookie: { secure: false }
+    saveUninitialized: true,
+    cookie: { 
+      secure: false,
+      httpOnly: true
+    }
   }));
 
   app.use(express.json());
 
-  // Set Content-Type header for all responses
-  app.use((_req, res, next) => {
-    res.setHeader('Content-Type', 'application/json');
-    next();
+  // Error handling middleware
+  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof SyntaxError && 'body' in err) {
+      return res.status(400).json({ error: 'Invalid JSON' });
+    }
+    next(err);
   });
 
   // Setup authentication
   setupAuth(app);
 
-  // Mount the routes with proper middleware
+  // Mount the routes
   app.use('/api/search', searchRouter);
   app.use('/api/files', filesRouter);
   app.use('/api/workspaces', workspacesRouter);
@@ -61,7 +66,7 @@ beforeAll(async () => {
     await db.insert(users).values({
       username: 'testuser',
       email: 'test@example.com',
-      password: 'password123',
+      password: '$2b$10$K7L1OJ45/4Y2nIvhRVpCe.FSmhDdWoXehVzJptJ/op0lSsvqNu/1u', // 'password123' hashed
       displayName: 'Test User',
       createdAt: new Date(),
       updatedAt: new Date()
