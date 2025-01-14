@@ -8,7 +8,6 @@ import { promisify } from "util";
 import { users, insertUserSchema, type User as SelectUser } from "@db/schema";
 import { db } from "@db";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
 
 const scryptAsync = promisify(scrypt);
 const crypto = {
@@ -28,12 +27,6 @@ const crypto = {
     return timingSafeEqual(hashedPasswordBuf, suppliedPasswordBuf);
   },
 };
-
-// Login schema for validation
-const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
-});
 
 // extend express user object with our schema
 declare global {
@@ -111,10 +104,7 @@ export function setupAuth(app: Express) {
       if (!result.success) {
         return res
           .status(400)
-          .json({ 
-            error: "Invalid input",
-            message: result.error.issues.map(i => i.message).join(", ")
-          });
+          .send("Invalid input: " + result.error.issues.map(i => i.message).join(", "));
       }
 
       const { username, password } = result.data;
@@ -127,10 +117,7 @@ export function setupAuth(app: Express) {
         .limit(1);
 
       if (existingUser) {
-        return res.status(400).json({
-          error: "Registration failed",
-          message: "Username already exists"
-        });
+        return res.status(400).send("Username already exists");
       }
 
       // Hash the password
@@ -161,24 +148,20 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", (req, res, next) => {
-    const result = loginSchema.safeParse(req.body);
+    const result = insertUserSchema.safeParse(req.body);
     if (!result.success) {
-      return res.status(400).json({
-        error: "Invalid input",
-        message: result.error.issues.map(i => i.message).join(", ")
-      });
+      return res
+        .status(400)
+        .send("Invalid input: " + result.error.issues.map(i => i.message).join(", "));
     }
 
-    passport.authenticate("local", (err: any, user: Express.User | false, info: IVerifyOptions) => {
+    const cb = (err: any, user: Express.User, info: IVerifyOptions) => {
       if (err) {
         return next(err);
       }
 
       if (!user) {
-        return res.status(401).json({
-          error: "Authentication failed",
-          message: info.message || "Login failed"
-        });
+        return res.status(400).send(info.message ?? "Login failed");
       }
 
       req.logIn(user, (err) => {
@@ -191,16 +174,14 @@ export function setupAuth(app: Express) {
           user: { id: user.id, username: user.username },
         });
       });
-    })(req, res, next);
+    };
+    passport.authenticate("local", cb)(req, res, next);
   });
 
   app.post("/api/logout", (req, res) => {
     req.logout((err) => {
       if (err) {
-        return res.status(500).json({
-          error: "Logout failed",
-          message: "An error occurred during logout"
-        });
+        return res.status(500).send("Logout failed");
       }
 
       res.json({ message: "Logout successful" });
@@ -212,9 +193,6 @@ export function setupAuth(app: Express) {
       return res.json(req.user);
     }
 
-    res.status(401).json({
-      error: "Not authenticated",
-      message: "User is not logged in"
-    });
+    res.status(401).send("Not logged in");
   });
 }

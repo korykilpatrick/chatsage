@@ -1,80 +1,112 @@
-import express, { type Express, Request, Response, NextFunction } from 'express';
+import express, { type Express } from 'express';
 import { beforeAll, afterEach, beforeEach } from '@jest/globals';
 import { db } from '@db';
 import { messages, users, channels, workspaces, files } from '@db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and, ilike, gte, lte } from 'drizzle-orm';
 import searchRouter from '../routes/search';
 import filesRouter from '../routes/files';
-import workspacesRouter from '../routes/workspaces';
-import { setupAuth } from '../auth';
-import session from 'express-session';
 
 // Set up the test Express application
 export async function setupTestApp(): Promise<Express> {
   const app = express();
-
-  // Setup session middleware with test configuration
-  app.use(session({
-    secret: 'test-secret',
-    resave: false,
-    saveUninitialized: true,
-    cookie: { 
-      secure: false,
-      httpOnly: true
-    }
-  }));
-
   app.use(express.json());
 
-  // Error handling middleware
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    if (err instanceof SyntaxError && 'body' in err) {
-      return res.status(400).json({ error: 'Invalid JSON' });
-    }
-    next(err);
+  // Set Content-Type header for all responses
+  app.use((_req, res, next) => {
+    res.setHeader('Content-Type', 'application/json');
+    next();
   });
 
-  // Setup authentication
-  setupAuth(app);
+  // Add test authentication middleware
+  app.use(async (req, _res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      // For testing, we'll consider any non-empty token as valid
+      // and attach a test user to the request
+      if (token) {
+        const [testUser] = await db.select().from(users).where(eq(users.email, 'test@example.com'));
+        if (testUser) {
+          (req as any).user = testUser;
+        }
+      }
+    }
+    next();
+  });
 
-  // Mount the routes
+  // Mount the search and files routes with proper middleware
   app.use('/api/search', searchRouter);
   app.use('/api/files', filesRouter);
-  app.use('/api/workspaces', workspacesRouter);
 
   return app;
 }
 
-// Clean up database before each test
-beforeEach(async () => {
-  // Order matters due to foreign key constraints
-  await db.delete(messages);
-  await db.delete(channels);
-  await db.delete(workspaces);
-  await db.delete(files);
-  // Don't delete users as they're needed for auth
-});
+// Mock Database Interface
+interface MockDB {
+  users: Map<string, any>;
+  verificationTokens: Map<string, string>;
+  refreshTokens: Set<string>;
+  _lastVerificationToken?: string;
+  clear: () => void;
+  getLastVerificationToken: () => string | undefined;
+}
 
-// Create test user for authentication
+export function createMockDb(): MockDB {
+  const mockDb: MockDB = {
+    users: new Map(),
+    verificationTokens: new Map(),
+    refreshTokens: new Set(),
+    _lastVerificationToken: undefined,
+
+    clear() {
+      this.users.clear();
+      this.verificationTokens.clear();
+      this.refreshTokens.clear();
+      this._lastVerificationToken = undefined;
+    },
+
+    getLastVerificationToken() {
+      return this._lastVerificationToken;
+    }
+  };
+
+  return mockDb;
+}
+
+let databaseAvailable = false;
+
 beforeAll(async () => {
+  // Mark database as available for testing
+  databaseAvailable = true;
+
   // Create test user if it doesn't exist
-  const testUser = await db.query.users.findFirst({
+  const existingUser = await db.query.users.findFirst({
     where: eq(users.email, 'test@example.com')
   });
 
-  if (!testUser) {
+  if (!existingUser) {
     await db.insert(users).values({
       username: 'testuser',
       email: 'test@example.com',
-      password: '$2b$10$K7L1OJ45/4Y2nIvhRVpCe.FSmhDdWoXehVzJptJ/op0lSsvqNu/1u', // 'password123' hashed
-      displayName: 'Test User',
-      createdAt: new Date(),
-      updatedAt: new Date()
+      password: 'password123',
+      displayName: 'Test User'
     });
   }
 
-  console.log('Test environment setup complete');
+  console.log('Database connection established');
 });
 
-// Export database availability flag
-export const databaseAvailable = true;
+// Clean up database before each test
+beforeEach(async () => {
+  if (databaseAvailable) {
+    // Order matters due to foreign key constraints
+    await db.delete(messages);
+    await db.delete(channels);
+    await db.delete(workspaces);
+    await db.delete(files);
+    // Don't delete the test user as it's needed for auth
+  }
+});
+
+// Export flag for tests to check if they should skip database operations
+export { databaseAvailable };
