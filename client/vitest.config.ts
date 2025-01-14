@@ -19,7 +19,8 @@ export default defineConfig({
         '**/*.d.ts',
         'src/types/**',
         'src/main.tsx',
-        'src/vite-env.d.ts'
+        'src/vite-env.d.ts',
+        'src/test/mocks/**'
       ],
       thresholds: {
         lines: 80,
@@ -28,14 +29,7 @@ export default defineConfig({
         statements: 80
       }
     },
-    watch: {
-      onStart: () => {
-        console.log('\nStarting tests in watch mode...');
-      },
-      onTrigger: (trigger) => {
-        console.log(`\nTest triggered by changes in: ${trigger}`);
-      }
-    }
+    watch: false
   },
   resolve: {
     alias: {
