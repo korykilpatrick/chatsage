@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "test:watch": "tsx src/test/watch.ts"
+  }
+}

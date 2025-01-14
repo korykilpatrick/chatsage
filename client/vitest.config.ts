@@ -29,7 +29,12 @@ export default defineConfig({
         statements: 80
       }
     },
-    watch: false
+    watch: {
+      // Watch mode configuration
+      onInit: true, // Run tests on initial start
+      onChangeIgnore: ['**/coverage/**', '**/node_modules/**'], // Files to ignore in watch mode
+      poll: true // Use polling for file changes in Replit environment
+    }
   },
   resolve: {
     alias: {

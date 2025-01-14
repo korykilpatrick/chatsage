@@ -55,7 +55,21 @@ afterEach(() => {
 // Clean up after all tests are done
 afterAll(() => server.close());
 
-// Custom test utilities
+// Mock data creators
+export const createMockUser = (overrides = {}) => ({
+  id: 1,
+  displayName: 'Test User',
+  email: 'test@example.com',
+  lastKnownPresence: 'ONLINE',
+  statusMessage: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides
+});
+
+// Export mockUser as a constant for consistent testing
+export const mockUser = createMockUser();
+
 export const createMockChannel = (overrides = {}) => ({
   id: 1,
   name: 'Test Channel',
@@ -86,15 +100,6 @@ export const createMockMessage = (overrides = {}) => ({
   createdAt: new Date(),
   updatedAt: new Date(),
   deleted: false,
-  ...overrides
-});
-
-export const createMockUser = (overrides = {}) => ({
-  id: 1,
-  name: 'Test User',
-  email: 'test@example.com',
-  createdAt: new Date(),
-  updatedAt: new Date(),
   ...overrides
 });
 
