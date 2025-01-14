@@ -10,6 +10,7 @@ import reactionsRouter from './routes/reactions';
 import searchRouter from './routes/search';
 import emojisRouter from './routes/emojis';
 import filesRouter from './routes/files';
+import workspacesRouter from './routes/workspaces';
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -21,6 +22,7 @@ export function registerRoutes(app: Express): Server {
   // More specific routes first
   app.use('/api/search', searchRouter);  // Mount search router first
   app.use('/api/workspaces/:workspaceId/channels', channelsRouter);
+  app.use('/api/workspaces', workspacesRouter);  // Add workspaces router
   app.use('/api/channels/:channelId/messages', messagesRouter);
   app.use('/api/messages/:messageId/reactions', reactionsRouter);
   app.use('/api/messages/:messageId/pin', pinsRouter);
