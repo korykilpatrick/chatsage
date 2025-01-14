@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import type { Channel } from "@/types/schema";
 import ChannelHeader from "./ChannelHeader";
 import ChannelListEntry from "./ChannelListEntry";
+import CreateChannelButton from "./CreateChannelButton";
 
 interface ChannelListProps {
   channels: Channel[];
@@ -18,8 +19,15 @@ export const ChannelList: FC<ChannelListProps> = ({ channels }) => {
 
   return (
     <div className="space-y-2">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-muted-foreground">
+          CHANNELS
+        </span>
+        <CreateChannelButton />
+      </div>
+
       <ChannelHeader
-        title={`CHANNELS (${publicChannels.length})`}
+        title={`PUBLIC (${publicChannels.length})`}
         isExpanded={isPublicExpanded}
         onToggle={() => setIsPublicExpanded(!isPublicExpanded)}
       />
@@ -40,7 +48,7 @@ export const ChannelList: FC<ChannelListProps> = ({ channels }) => {
       {privateChannels.length > 0 && (
         <>
           <ChannelHeader
-            title={`PRIVATE CHANNELS (${privateChannels.length})`}
+            title={`PRIVATE (${privateChannels.length})`}
             isExpanded={isPrivateExpanded}
             onToggle={() => setIsPrivateExpanded(!isPrivateExpanded)}
           />
