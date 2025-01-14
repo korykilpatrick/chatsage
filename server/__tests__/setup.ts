@@ -2,13 +2,25 @@ import express, { type Express } from 'express';
 import { beforeAll, afterEach, beforeEach } from '@jest/globals';
 import { db } from '@db';
 import { messages, users, channels, workspaces, files } from '@db/schema';
-import { eq, and, ilike, gte, lte } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import searchRouter from '../routes/search';
 import filesRouter from '../routes/files';
+import workspacesRouter from '../routes/workspaces';
+import { setupAuth } from '../auth';
+import session from 'express-session';
 
 // Set up the test Express application
 export async function setupTestApp(): Promise<Express> {
   const app = express();
+
+  // Setup session before other middleware
+  app.use(session({
+    secret: 'test-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false }
+  }));
+
   app.use(express.json());
 
   // Set Content-Type header for all responses
@@ -17,96 +29,47 @@ export async function setupTestApp(): Promise<Express> {
     next();
   });
 
-  // Add test authentication middleware
-  app.use(async (req, _res, next) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      // For testing, we'll consider any non-empty token as valid
-      // and attach a test user to the request
-      if (token) {
-        const [testUser] = await db.select().from(users).where(eq(users.email, 'test@example.com'));
-        if (testUser) {
-          (req as any).user = testUser;
-        }
-      }
-    }
-    next();
-  });
+  // Setup authentication
+  setupAuth(app);
 
-  // Mount the search and files routes with proper middleware
+  // Mount the routes with proper middleware
   app.use('/api/search', searchRouter);
   app.use('/api/files', filesRouter);
+  app.use('/api/workspaces', workspacesRouter);
 
   return app;
 }
 
-// Mock Database Interface
-interface MockDB {
-  users: Map<string, any>;
-  verificationTokens: Map<string, string>;
-  refreshTokens: Set<string>;
-  _lastVerificationToken?: string;
-  clear: () => void;
-  getLastVerificationToken: () => string | undefined;
-}
+// Clean up database before each test
+beforeEach(async () => {
+  // Order matters due to foreign key constraints
+  await db.delete(messages);
+  await db.delete(channels);
+  await db.delete(workspaces);
+  await db.delete(files);
+  // Don't delete users as they're needed for auth
+});
 
-export function createMockDb(): MockDB {
-  const mockDb: MockDB = {
-    users: new Map(),
-    verificationTokens: new Map(),
-    refreshTokens: new Set(),
-    _lastVerificationToken: undefined,
-
-    clear() {
-      this.users.clear();
-      this.verificationTokens.clear();
-      this.refreshTokens.clear();
-      this._lastVerificationToken = undefined;
-    },
-
-    getLastVerificationToken() {
-      return this._lastVerificationToken;
-    }
-  };
-
-  return mockDb;
-}
-
-let databaseAvailable = false;
-
+// Create test user for authentication
 beforeAll(async () => {
-  // Mark database as available for testing
-  databaseAvailable = true;
-
   // Create test user if it doesn't exist
-  const existingUser = await db.query.users.findFirst({
+  const testUser = await db.query.users.findFirst({
     where: eq(users.email, 'test@example.com')
   });
 
-  if (!existingUser) {
+  if (!testUser) {
     await db.insert(users).values({
       username: 'testuser',
       email: 'test@example.com',
       password: 'password123',
-      displayName: 'Test User'
+      displayName: 'Test User',
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
   }
 
-  console.log('Database connection established');
+  console.log('Test environment setup complete');
 });
 
-// Clean up database before each test
-beforeEach(async () => {
-  if (databaseAvailable) {
-    // Order matters due to foreign key constraints
-    await db.delete(messages);
-    await db.delete(channels);
-    await db.delete(workspaces);
-    await db.delete(files);
-    // Don't delete the test user as it's needed for auth
-  }
-});
-
-// Export flag for tests to check if they should skip database operations
-export { databaseAvailable };
+// Export database availability flag
+export const databaseAvailable = true;

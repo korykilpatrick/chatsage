@@ -9,7 +9,8 @@ import pinsRouter from './routes/pins';
 import reactionsRouter from './routes/reactions';
 import searchRouter from './routes/search';
 import emojisRouter from './routes/emojis';
-import filesRouter from './routes/files';  // Add files router import
+import filesRouter from './routes/files';
+import workspacesRouter from './routes/workspaces';  // Add workspaces router import
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -20,15 +21,16 @@ export function registerRoutes(app: Express): Server {
   // Register routes in order of specificity
   // More specific routes first
   app.use('/api/search', searchRouter);  // Mount search router first
+  app.use('/api/workspaces', workspacesRouter);  // Add workspaces routes before workspace-specific ones
   app.use('/api/workspaces/:workspaceId/channels', channelsRouter);
   app.use('/api/channels/:channelId/messages', messagesRouter);
   app.use('/api/messages/:messageId/reactions', reactionsRouter);
   app.use('/api/messages/:messageId/pin', pinsRouter);
   app.use('/api/channels/:channelId/pins', pinsRouter);
-  app.use('/api/files', filesRouter);  // Add files routes
+  app.use('/api/files', filesRouter);
   app.use('/api/channels', channelsRouter);  // Global channel routes after specific ones
   app.use('/api/users', usersRouter);
-  app.use('/api/emojis', emojisRouter);  // Add emoji routes
+  app.use('/api/emojis', emojisRouter);
 
   return httpServer;
 }
