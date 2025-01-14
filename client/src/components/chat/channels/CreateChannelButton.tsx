@@ -54,24 +54,36 @@ export const CreateChannelButton: FC<CreateChannelButtonProps> = ({ className })
   const createChannel = useMutation({
     mutationFn: async (data: CreateChannelForm) => {
       const workspaceId = 1; // Default workspace ID
-      const response = await fetch(`/api/workspaces/${workspaceId}/channels`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: data.name.toLowerCase(),
-          type: data.isPrivate ? "PRIVATE" : "PUBLIC",
-          topic: data.topic || null,
-        }),
-        credentials: 'include'
-      });
+      try {
+        const response = await fetch(`/api/workspaces/${workspaceId}/channels`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify({
+            name: data.name.toLowerCase(),
+            type: data.isPrivate ? "PRIVATE" : "PUBLIC",
+            topic: data.topic || null,
+          }),
+          credentials: 'include'
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Channel creation failed:', errorData);
-        throw new Error(errorData.details?.message || 'Failed to create channel');
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error("Server returned non-JSON response");
+        }
+
+        const responseData = await response.json();
+        if (!response.ok) {
+          throw new Error(responseData.details?.message || responseData.error || 'Failed to create channel');
+        }
+
+        return responseData;
+      } catch (error: any) {
+        console.error('Channel creation error:', error);
+        throw new Error(error.message || 'Failed to create channel');
       }
-
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/channels"] });
@@ -86,7 +98,7 @@ export const CreateChannelButton: FC<CreateChannelButtonProps> = ({ className })
       console.error('Channel creation error:', error);
       toast({
         title: "Error creating channel",
-        description: error.message || "Failed to create channel. Please try again.",
+        description: error.message,
         variant: "destructive",
       });
     },
