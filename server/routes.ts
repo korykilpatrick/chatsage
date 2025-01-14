@@ -4,6 +4,7 @@ import { setupAuth } from "./auth";
 import { setupWebSocket } from "./socket";
 import usersRouter from './routes/users';
 import messagesRouter from './routes/messages';
+import channelsRouter from './routes/channels';
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -13,7 +14,9 @@ export function registerRoutes(app: Express): Server {
 
   // Register routes
   app.use('/api/users', usersRouter);
-  app.use('/api/channels', messagesRouter);
+  app.use('/api/messages', messagesRouter);
+  app.use('/api/channels', channelsRouter);
+  app.use('/api/workspaces/:workspaceId/channels', channelsRouter);
 
   return httpServer;
 }
