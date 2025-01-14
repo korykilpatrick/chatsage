@@ -50,7 +50,7 @@ describe('Channels API', () => {
 
   describe('GET /api/workspaces/:workspaceId/channels', () => {
     it('should return 401 when not authenticated', async () => {
-      app.use('/api/workspaces', channelsRouter);
+      app.use('/api', channelsRouter);
 
       const response = await request(app)
         .get(`/api/workspaces/${testWorkspace.id}/channels`)
@@ -67,7 +67,7 @@ describe('Channels API', () => {
         next();
       });
 
-      app.use('/api/workspaces', channelsRouter);
+      app.use('/api', channelsRouter);
 
       const response = await request(app)
         .get(`/api/workspaces/${testWorkspace.id}/channels`)
@@ -86,7 +86,7 @@ describe('Channels API', () => {
         next();
       });
 
-      app.use('/api/workspaces', channelsRouter);
+      app.use('/api', channelsRouter);
 
       // Create test channel
       const [channel] = await db.insert(channelsTable).values({
@@ -119,7 +119,7 @@ describe('Channels API', () => {
         next();
       });
 
-      app.use('/api/workspaces', channelsRouter);
+      app.use('/api', channelsRouter);
 
       const response = await request(app)
         .get('/api/workspaces/999/channels')
@@ -138,7 +138,7 @@ describe('Channels API', () => {
         next();
       });
 
-      app.use('/api/workspaces', channelsRouter);
+      app.use('/api', channelsRouter);
     });
 
     it('should create a new channel', async () => {
@@ -153,7 +153,6 @@ describe('Channels API', () => {
         .expect('Content-Type', /json/)
         .expect(201);
 
-      // Use toMatchObject instead of toEqual for partial object matching
       expect(response.body).toMatchObject({
         name: channelData.name,
         workspaceId: testWorkspace.id,
@@ -201,7 +200,7 @@ describe('Channels API', () => {
         next();
       });
 
-      app.use('/api/channels', channelsRouter);
+      app.use('/api', channelsRouter);
 
       // Create a test channel
       [testChannel] = await db.insert(channelsTable).values({
@@ -246,7 +245,7 @@ describe('Channels API', () => {
         next();
       });
 
-      app.use('/api/channels', channelsRouter);
+      app.use('/api', channelsRouter);
 
       // Create a test channel
       [testChannel] = await db.insert(channelsTable).values({
@@ -307,7 +306,7 @@ describe('Channels API', () => {
         next();
       });
 
-      app.use('/api/channels', channelsRouter);
+      app.use('/api', channelsRouter);
 
       // Create a test channel
       [testChannel] = await db.insert(channelsTable).values({

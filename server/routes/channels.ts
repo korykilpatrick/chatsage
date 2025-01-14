@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '@db';
-import { channels, workspaces, users, channelTypeEnum, channelMembers } from '@db/schema';
+import { channels, workspaces, channelTypeEnum } from '@db/schema';
 import { and, eq, asc } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -20,8 +20,18 @@ const channelSchema = z.object({
   type: z.enum(channelTypeEnum.enumValues).default('PUBLIC'),
 });
 
-// GET /api/channels
-router.get('/', requireAuth, async (req: Request, res: Response) => {
+// Helper to set JSON content type
+const setJsonContentType = (_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Content-Type', 'application/json');
+  next();
+};
+
+// Use middleware for all routes
+router.use(setJsonContentType);
+router.use(requireAuth);
+
+// GET /api/channels - Global channel listing
+router.get('/channels', async (req: Request, res: Response) => {
   try {
     const includeArchived = req.query.includeArchived === 'true';
     let conditions = [];
@@ -33,47 +43,18 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     const channelsList = await db
       .select()
       .from(channels)
-      .where(and(...conditions))
+      .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(asc(channels.name));
 
-    return res.json(channelsList);
+    return res.json({ channels: channelsList });
   } catch (error) {
     console.error('Error fetching channels:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// POST /api/channels
-router.post('/', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const result = channelSchema.safeParse(req.body);
-    if (!result.success) {
-      return res.status(400).json({ error: result.error.issues[0].message });
-    }
-
-    const { name, type } = result.data;
-
-    // Create new channel
-    const [newChannel] = await db
-      .insert(channels)
-      .values({
-        name: name.trim(),
-        type,
-        archived: false,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      })
-      .returning();
-
-    return res.status(201).json(newChannel);
-  } catch (error) {
-    console.error('Error creating channel:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 // GET /api/workspaces/:workspaceId/channels
-router.get('/workspaces/:workspaceId/channels', requireAuth, async (req: Request, res: Response) => {
+router.get('/workspaces/:workspaceId/channels', async (req: Request, res: Response) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId);
     if (isNaN(workspaceId)) {
@@ -88,7 +69,7 @@ router.get('/workspaces/:workspaceId/channels', requireAuth, async (req: Request
       .limit(1);
 
     if (!workspace) {
-      return res.status(404).json({ error: 'WORKSPACE_NOT_FOUND' });
+      return res.status(404).json({ error: 'Workspace not found' });
     }
 
     // Get channels with optional archived filter
@@ -105,15 +86,61 @@ router.get('/workspaces/:workspaceId/channels', requireAuth, async (req: Request
       .where(and(...conditions))
       .orderBy(asc(channels.name));
 
-    return res.json(channelsList);
+    return res.json({ channels: channelsList });
   } catch (error) {
     console.error('Error fetching channels:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
+// POST /api/workspaces/:workspaceId/channels
+router.post('/workspaces/:workspaceId/channels', async (req: Request, res: Response) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId);
+    if (isNaN(workspaceId)) {
+      return res.status(400).json({ error: 'Invalid workspace ID' });
+    }
+
+    // Check if workspace exists
+    const [workspace] = await db
+      .select()
+      .from(workspaces)
+      .where(eq(workspaces.id, workspaceId))
+      .limit(1);
+
+    if (!workspace) {
+      return res.status(404).json({ error: 'Workspace not found' });
+    }
+
+    const result = channelSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: 'Channel name cannot be empty' });
+    }
+
+    const { name, type } = result.data;
+
+    // Create new channel
+    const [newChannel] = await db
+      .insert(channels)
+      .values({
+        name: name.trim(),
+        workspaceId,
+        type,
+        archived: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
+
+    return res.status(201).json(newChannel);
+  } catch (error) {
+    console.error('Error creating channel:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/channels/:channelId
-router.get('/:channelId', requireAuth, async (req: Request, res: Response) => {
+router.get('/channels/:channelId', async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.channelId);
     if (isNaN(channelId)) {
@@ -127,7 +154,7 @@ router.get('/:channelId', requireAuth, async (req: Request, res: Response) => {
       .limit(1);
 
     if (!channel) {
-      return res.status(404).json({ error: 'CHANNEL_NOT_FOUND' });
+      return res.status(404).json({ error: 'Channel not found' });
     }
 
     return res.json(channel);
@@ -138,7 +165,7 @@ router.get('/:channelId', requireAuth, async (req: Request, res: Response) => {
 });
 
 // PUT /api/channels/:channelId
-router.put('/:channelId', requireAuth, async (req: Request, res: Response) => {
+router.put('/channels/:channelId', async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.channelId);
     if (isNaN(channelId)) {
@@ -147,7 +174,7 @@ router.put('/:channelId', requireAuth, async (req: Request, res: Response) => {
 
     const result = channelSchema.safeParse(req.body);
     if (!result.success) {
-      return res.status(400).json({ error: result.error.issues[0].message });
+      return res.status(400).json({ error: 'Channel name cannot be empty' });
     }
 
     const { name, type } = result.data;
@@ -160,7 +187,7 @@ router.put('/:channelId', requireAuth, async (req: Request, res: Response) => {
       .limit(1);
 
     if (!existingChannel) {
-      return res.status(404).json({ error: 'CHANNEL_NOT_FOUND' });
+      return res.status(404).json({ error: 'Channel not found' });
     }
 
     // Update channel
@@ -182,7 +209,7 @@ router.put('/:channelId', requireAuth, async (req: Request, res: Response) => {
 });
 
 // DELETE /api/channels/:channelId
-router.delete('/:channelId', requireAuth, async (req: Request, res: Response) => {
+router.delete('/channels/:channelId', async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.channelId);
     if (isNaN(channelId)) {
@@ -197,7 +224,7 @@ router.delete('/:channelId', requireAuth, async (req: Request, res: Response) =>
       .limit(1);
 
     if (!existingChannel) {
-      return res.status(404).json({ error: 'CHANNEL_NOT_FOUND' });
+      return res.status(404).json({ error: 'Channel not found' });
     }
 
     // Archive channel instead of deleting
@@ -209,108 +236,9 @@ router.delete('/:channelId', requireAuth, async (req: Request, res: Response) =>
       })
       .where(eq(channels.id, channelId));
 
-    return res.status(204).end();
+    return res.status(200).json({ message: 'Channel archived' });
   } catch (error) {
     console.error('Error archiving channel:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// POST /api/channels/:channelId/members
-router.post('/:channelId/members', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const channelId = parseInt(req.params.channelId);
-    if (isNaN(channelId)) {
-      return res.status(400).json({ error: 'Invalid channel ID' });
-    }
-
-    const { userId } = req.body;
-    if (!userId || isNaN(parseInt(userId))) {
-      return res.status(400).json({ error: 'Invalid user ID' });
-    }
-
-    // Check if channel exists
-    const [channel] = await db
-      .select()
-      .from(channels)
-      .where(eq(channels.id, channelId))
-      .limit(1);
-
-    if (!channel) {
-      return res.status(404).json({ error: 'CHANNEL_NOT_FOUND' });
-    }
-
-    // Check if user exists
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    if (!user) {
-      return res.status(404).json({ error: 'USER_NOT_FOUND' });
-    }
-
-    // Add user to channel
-    await db.insert(channelMembers).values({
-      channelId,
-      userId,
-      createdAt: new Date()
-    });
-
-    return res.status(201).json({ message: 'User added to the channel' });
-  } catch (error) {
-    if (error.code === '23505') { // Unique violation
-      return res.status(409).json({ error: 'User is already a member of this channel' });
-    }
-    console.error('Error adding channel member:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// DELETE /api/channels/:channelId/members
-router.delete('/:channelId/members', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const channelId = parseInt(req.params.channelId);
-    const userId = parseInt(req.query.userId as string);
-
-    if (isNaN(channelId) || isNaN(userId)) {
-      return res.status(400).json({ error: 'Invalid channel ID or user ID' });
-    }
-
-    // Check if channel exists
-    const [channel] = await db
-      .select()
-      .from(channels)
-      .where(eq(channels.id, channelId))
-      .limit(1);
-
-    if (!channel) {
-      return res.status(404).json({ error: 'CHANNEL_NOT_FOUND' });
-    }
-
-    // Check if user exists
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    if (!user) {
-      return res.status(404).json({ error: 'USER_NOT_FOUND' });
-    }
-
-    // Remove user from channel
-    await db
-      .delete(channelMembers)
-      .where(and(
-        eq(channelMembers.channelId, channelId),
-        eq(channelMembers.userId, userId)
-      ));
-
-    return res.status(204).end();
-  } catch (error) {
-    console.error('Error removing channel member:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

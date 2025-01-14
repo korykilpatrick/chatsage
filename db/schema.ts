@@ -119,7 +119,6 @@ export const pinnedMessages = pgTable("pinned_messages", {
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   messages: many(messages),
-  channels: many(userChannels),
   workspaces: many(userWorkspaces),
   files: many(files),
   reactions: many(messageReactions),
@@ -138,8 +137,8 @@ export const channelsRelations = relations(channels, ({ one, many }) => ({
     references: [workspaces.id],
   }),
   messages: many(messages),
-  members: many(userChannels),
 }));
+
 
 export const messagesRelations = relations(messages, ({ one, many }) => ({
   user: one(users, {
