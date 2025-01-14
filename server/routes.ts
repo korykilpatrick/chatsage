@@ -5,6 +5,8 @@ import { setupWebSocket } from "./socket";
 import usersRouter from './routes/users';
 import messagesRouter from './routes/messages';
 import channelsRouter from './routes/channels';
+import pinsRouter from './routes/pins';
+import reactionsRouter from './routes/reactions';
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -12,11 +14,15 @@ export function registerRoutes(app: Express): Server {
   const httpServer = createServer(app);
   setupWebSocket(httpServer);
 
-  // Register routes
-  app.use('/api/users', usersRouter);
-  app.use('/api/messages', messagesRouter);
-  app.use('/api/channels', channelsRouter);
+  // Register routes in order of specificity
+  // More specific routes first
   app.use('/api/workspaces/:workspaceId/channels', channelsRouter);
+  app.use('/api/channels/:channelId/messages', messagesRouter);
+  app.use('/api/messages/:messageId/reactions', reactionsRouter);
+  app.use('/api/messages/:messageId/pin', pinsRouter);
+  app.use('/api/channels/:channelId/pins', pinsRouter);
+  app.use('/api/channels', channelsRouter);
+  app.use('/api/users', usersRouter);
 
   return httpServer;
 }

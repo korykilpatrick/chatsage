@@ -1,13 +1,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '@db';
 import { messages, channels } from '@db/schema';
-import { and, eq, desc, lt, gt, lte, gte, sql } from 'drizzle-orm';
+import { and, eq, desc, gt, lt, lte, gte, sql } from 'drizzle-orm';
 
-const router = Router();
+const router = Router({ mergeParams: true }); // Add mergeParams to access parent route parameters
 
 // Authentication middleware
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user) {
+    res.setHeader('Content-Type', 'application/json');
     return res.status(401).json({ error: 'Not authenticated' });
   }
   next();
@@ -15,33 +16,45 @@ const requireAuth = (req: Request, res: Response, next: NextFunction) => {
 
 // Authorization middleware for message modifications
 const canModifyMessage = async (req: Request, res: Response, next: NextFunction) => {
-  const messageId = parseInt(req.params.messageId);
-  if (isNaN(messageId)) {
-    return res.status(400).json({ error: 'Invalid message ID' });
+  try {
+    const messageId = parseInt(req.params.messageId);
+    if (isNaN(messageId)) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(400).json({ error: 'Invalid message ID' });
+    }
+
+    const [message] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, messageId))
+      .limit(1);
+
+    if (!message) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (message.userId !== req.user!.id) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(403).json({ error: 'Not authorized to modify this message' });
+    }
+
+    // Add message to request for later use
+    (req as any).message = message;
+    next();
+  } catch (error) {
+    console.error('Error in authorization middleware:', error);
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(500).json({ error: 'Internal server error' });
   }
-
-  const [message] = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.id, messageId))
-    .limit(1);
-
-  if (!message) {
-    return res.status(404).json({ error: 'Message not found' });
-  }
-
-  if (message.userId !== req.user!.id) {
-    return res.status(403).json({ error: 'Not authorized to modify this message' });
-  }
-
-  next();
 };
 
 // GET /api/channels/:channelId/messages
-router.get('/:channelId/messages', requireAuth, async (req: Request, res: Response) => {
+router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.channelId);
     if (isNaN(channelId)) {
+      res.setHeader('Content-Type', 'application/json');
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
 
@@ -53,11 +66,12 @@ router.get('/:channelId/messages', requireAuth, async (req: Request, res: Respon
       .limit(1);
 
     if (!channel) {
+      res.setHeader('Content-Type', 'application/json');
       return res.status(404).json({ error: 'Channel not found' });
     }
 
     // Parse query parameters
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+    const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string), 50) : 50;
     const cursor = req.query.cursor as string | undefined;
     const before = req.query.before ? new Date(req.query.before as string) : undefined;
     const after = req.query.after ? new Date(req.query.after as string) : undefined;
@@ -78,13 +92,10 @@ router.get('/:channelId/messages', requireAuth, async (req: Request, res: Respon
           gte(messages.createdAt, after)
         )
       );
-    } else {
-      if (before) {
-        conditions.push(lte(messages.createdAt, before));
-      }
-      if (after) {
-        conditions.push(gte(messages.createdAt, after));
-      }
+    } else if (before) {
+      conditions.push(lte(messages.createdAt, before));
+    } else if (after) {
+      conditions.push(gte(messages.createdAt, after));
     }
 
     // Handle cursor-based pagination
@@ -100,6 +111,7 @@ router.get('/:channelId/messages', requireAuth, async (req: Request, res: Respon
           sql`(${messages.createdAt}, ${messages.id}) < (${cursorDate}, ${cursorId})`
         );
       } catch (e) {
+        res.setHeader('Content-Type', 'application/json');
         return res.status(400).json({ error: 'Invalid cursor format' });
       }
     }
@@ -123,22 +135,31 @@ router.get('/:channelId/messages', requireAuth, async (req: Request, res: Respon
       nextCursor = Buffer.from(`${lastMessage.createdAt.getTime()}:${lastMessage.id}`).toString('base64');
     }
 
+    res.setHeader('Content-Type', 'application/json');
     return res.json({
       messages: results,
       nextCursor
     });
   } catch (error) {
     console.error('Error fetching messages:', error);
+    res.setHeader('Content-Type', 'application/json');
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // POST /api/channels/:channelId/messages
-router.post('/:channelId/messages', requireAuth, async (req: Request, res: Response) => {
+router.post('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.channelId);
     if (isNaN(channelId)) {
+      res.setHeader('Content-Type', 'application/json');
       return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    const { content } = req.body;
+    if (!content || content.trim().length === 0) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(400).json({ error: 'Message content cannot be empty' });
     }
 
     // Check if channel exists
@@ -149,12 +170,8 @@ router.post('/:channelId/messages', requireAuth, async (req: Request, res: Respo
       .limit(1);
 
     if (!channel) {
+      res.setHeader('Content-Type', 'application/json');
       return res.status(404).json({ error: 'Channel not found' });
-    }
-
-    const { content } = req.body;
-    if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Message content cannot be empty' });
     }
 
     // Create new message
@@ -164,26 +181,30 @@ router.post('/:channelId/messages', requireAuth, async (req: Request, res: Respo
         content: content.trim(),
         channelId,
         userId: req.user!.id,
+        workspaceId: channel.workspaceId,
         deleted: false,
         createdAt: new Date(),
         updatedAt: new Date()
       })
       .returning();
 
+    res.setHeader('Content-Type', 'application/json');
     return res.status(201).json(newMessage);
   } catch (error) {
     console.error('Error creating message:', error);
+    res.setHeader('Content-Type', 'application/json');
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// PUT /api/channels/:channelId/messages/:messageId
-router.put('/:channelId/messages/:messageId', requireAuth, canModifyMessage, async (req: Request, res: Response) => {
+// PUT /api/messages/:messageId
+router.put('/:messageId', requireAuth, canModifyMessage, async (req: Request, res: Response) => {
   try {
     const messageId = parseInt(req.params.messageId);
     const { content } = req.body;
 
     if (!content || content.trim().length === 0) {
+      res.setHeader('Content-Type', 'application/json');
       return res.status(400).json({ error: 'Message content cannot be empty' });
     }
 
@@ -197,15 +218,17 @@ router.put('/:channelId/messages/:messageId', requireAuth, canModifyMessage, asy
       .where(eq(messages.id, messageId))
       .returning();
 
+    res.setHeader('Content-Type', 'application/json');
     return res.json(updatedMessage);
   } catch (error) {
     console.error('Error updating message:', error);
+    res.setHeader('Content-Type', 'application/json');
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// DELETE /api/channels/:channelId/messages/:messageId
-router.delete('/:channelId/messages/:messageId', requireAuth, canModifyMessage, async (req: Request, res: Response) => {
+// DELETE /api/messages/:messageId
+router.delete('/:messageId', requireAuth, canModifyMessage, async (req: Request, res: Response) => {
   try {
     const messageId = parseInt(req.params.messageId);
 
@@ -218,9 +241,11 @@ router.delete('/:channelId/messages/:messageId', requireAuth, canModifyMessage, 
       })
       .where(eq(messages.id, messageId));
 
+    res.setHeader('Content-Type', 'application/json');
     return res.json({ message: 'Message deleted' });
   } catch (error) {
     console.error('Error deleting message:', error);
+    res.setHeader('Content-Type', 'application/json');
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
