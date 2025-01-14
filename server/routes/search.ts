@@ -2,8 +2,18 @@ import { Router } from 'express';
 import { db } from "@db";
 import { messages, users, channels } from "@db/schema";
 import { eq, and, ilike, gte, lte } from "drizzle-orm";
+import express from "express";
 
 const router = Router();
+
+// Add JSON parsing middleware
+router.use(express.json());
+
+// Set content type for all responses
+router.use((_req, res, next) => {
+  res.setHeader('Content-Type', 'application/json');
+  next();
+});
 
 router.get('/', async (req, res) => {
   try {
@@ -94,22 +104,34 @@ router.get('/advanced', async (req, res) => {
       conditions.push(eq(messages.workspaceId, wsId));
     }
 
+    // Handle date range search
     if (fromDate) {
-      const date = new Date(fromDate as string);
-      if (isNaN(date.getTime())) {
+      try {
+        const date = new Date(fromDate as string);
+        if (isNaN(date.getTime())) {
+          return res.status(400).json({ error: 'Invalid fromDate format' });
+        }
+        date.setHours(0, 0, 0, 0);  // Start of the day
+        conditions.push(gte(messages.createdAt, date));
+      } catch (error) {
         return res.status(400).json({ error: 'Invalid fromDate format' });
       }
-      conditions.push(gte(messages.createdAt, date));
     }
 
     if (toDate) {
-      const date = new Date(toDate as string);
-      if (isNaN(date.getTime())) {
+      try {
+        const date = new Date(toDate as string);
+        if (isNaN(date.getTime())) {
+          return res.status(400).json({ error: 'Invalid toDate format' });
+        }
+        date.setHours(23, 59, 59, 999);  // End of the day
+        conditions.push(lte(messages.createdAt, date));
+      } catch (error) {
         return res.status(400).json({ error: 'Invalid toDate format' });
       }
-      conditions.push(lte(messages.createdAt, date));
     }
 
+    // Handle user search
     if (fromUser) {
       conditions.push(eq(users.username, fromUser as string));
     }

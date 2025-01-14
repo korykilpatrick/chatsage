@@ -2,74 +2,22 @@ import express, { type Express } from 'express';
 import { beforeAll, afterEach, beforeEach } from '@jest/globals';
 import { db } from '@db';
 import { messages, users, channels, workspaces } from '@db/schema';
-import { eq, and, ilike } from 'drizzle-orm';
+import { eq, and, ilike, gte, lte } from 'drizzle-orm';
+import searchRouter from '../routes/search';
 
 // Set up the test Express application
 export async function setupTestApp(): Promise<Express> {
   const app = express();
   app.use(express.json());
 
-  // Mount the search routes
-  app.get('/api/search', async (req, res) => {
-    try {
-      const { keyword, workspaceId } = req.query;
-
-      // Base query for messages
-      let query = db.select({
-        messages: messages,
-        user: users,
-        channel: channels,
-      })
-      .from(messages)
-      .leftJoin(users, eq(messages.userId, users.id))
-      .leftJoin(channels, eq(messages.channelId, channels.id));
-
-      // Add conditions based on parameters
-      const conditions = [];
-
-      if (keyword) {
-        conditions.push(ilike(messages.content, `%${keyword}%`));
-      }
-
-      if (workspaceId) {
-        const wsId = parseInt(workspaceId as string);
-        if (isNaN(wsId)) {
-          return res.status(400).json({ error: 'Invalid workspace ID' });
-        }
-        conditions.push(eq(messages.workspaceId, wsId));
-      }
-
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions));
-      }
-
-      // Execute query
-      const results = await query.execute();
-
-      // Format results
-      const formattedResults = results.map(result => ({
-        id: result.messages.id,
-        content: result.messages.content,
-        createdAt: result.messages.createdAt,
-        user: result.user ? {
-          id: result.user.id,
-          username: result.user.username,
-          displayName: result.user.displayName,
-        } : null,
-        channel: result.channel ? {
-          id: result.channel.id,
-          name: result.channel.name,
-          workspaceId: result.channel.workspaceId,
-        } : null,
-        workspaceId: result.messages.workspaceId,
-      }));
-
-      res.json({ messages: formattedResults });
-    } catch (error) {
-      console.error('Search error:', error);
-      res.status(500).json({ error: 'Internal server error' });
-    }
+  // Set Content-Type header for all responses
+  app.use((_req, res, next) => {
+    res.setHeader('Content-Type', 'application/json');
+    next();
   });
+
+  // Mount the search routes with proper middleware
+  app.use('/api/search', searchRouter);
 
   return app;
 }
